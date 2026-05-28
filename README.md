@@ -7,7 +7,7 @@
 
 HiCAT is a computational framework
 
-![HiCAT workflow]()
+![HiCAT workflow](figures/HiCAT_workflow_most_upd.png)
 <br>
 For thorough details, see the preprint: [Biorxiv]()
 <br>
