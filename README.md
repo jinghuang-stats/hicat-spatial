@@ -12,8 +12,9 @@ HiCAT is a supervised computational framework for generating pathologist-informe
 For a detailed description of the method and analyses, please see our preprint: [Biorxiv]()
 <br>
 
-## Usage
+## Key features
 With [**HiCAT**](https://github.com/jinghuang-stats/HiCAT) package, you can:
+
 - Extract pathologist-generated scribble annotations
 - Infer hierarchical tissue organization by integrating multimodal spatial omics inputs
 - Quantify region-specific heterogeneity across samples to pinpoint potentially disease-relevant regions for further investigation
@@ -21,9 +22,11 @@ With [**HiCAT**](https://github.com/jinghuang-stats/HiCAT) package, you can:
 - Transfer pathologist-informed annotations and characterize region-level heterogeneity beyond the granularity of the original annotations
 - Perform cohort-level heterogeneity analyses and interpret the functional roles of identified heterogeneous subtypes
 
-Although HiCAT is a supervised framework that requires annotated spatial sections as inputs, we provide trained reference datasets for breast cancer, human tonsil, and mouse brain, allowing users to directly perform label transfer and heterogeneity analyses without generating their own annotated reference data.
+## Reference datasets
 
-Users are also welcome and encouraged to provide their own annotated spatial reference datasets, which can offer more closely matched supervision for label transfer. These user-provided references can also be integrated with the provided HiCAT references to support more robust and comprehensive inference. 
+HiCAT is a supervised framework that requires annotated spatial sections as input. To facilitate direct use, we provide precomputed reference information for breast cancer, human tonsil, and mouse brain, allowing users to perform label transfer and heterogeneity analyses without generating their own annotated reference data.
+
+Users are also welcome to provide their own annotated spatial reference datasets, which can offer more closely matched supervision for label transfer. User-provided references can also be integrated with the provided HiCAT references to support more robust and comprehensive inference. 
 
 ## Tutorial
 For the step-by-step tutorial, please refer to:
