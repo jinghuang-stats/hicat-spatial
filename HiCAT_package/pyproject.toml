@@ -1,0 +1,75 @@
+[project]
+name = "hicat"
+version = "0.1.0"
+description = "HiCAT: hierarchical cohort-scale annotation transfer for spatial omics data"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Jing Huang" }
+]
+license = { text = "MIT" }
+keywords = [
+    "multimodal spatial omics",
+    "spatial transcriptomics",
+    "pathologist annotation",
+    "label transfer",
+    "intra-sample heterogeneity",
+    "hierarchical annotation"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Bio-Informatics"
+]
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "scanpy",
+    "anndata",
+    "matplotlib",
+    "seaborn",
+    "networkx",
+    "hnswlib",
+    "bigtree"
+]
+
+[project.optional-dependencies]
+image = [
+    "opencv-python",
+    "Pillow",
+    "slideio",
+    "torch",
+    "torchvision",
+    "timm",
+    "scikit-image",
+    "umap-learn",
+    "h5py",
+    "webdataset",
+    "einops",
+    "tqdm",
+    "psutil",
+    "tifffile",
+    "requests",
+    "brokenaxes"
+]
+
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+    "pyflakes",
+    "flake8",
+    "pylint",
+    "jupyter",
+    "ipykernel"
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
