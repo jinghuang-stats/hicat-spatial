@@ -1,0 +1,108 @@
+[project]
+name = "hicat-spatial"
+version = "0.1.0"
+description = "HiCAT: hierarchical cohort-scale annotation transfer for spatial omics data"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Jing Huang" }
+]
+license = { text = "MIT" }
+keywords = [
+    "multimodal spatial omics",
+    "spatial transcriptomics",
+    "pathologist annotation",
+    "label transfer",
+    "intra-sample heterogeneity",
+    "hierarchical annotation"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics"
+]
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "scanpy[leiden]",
+    "anndata",
+    "matplotlib",
+    "seaborn",
+    "networkx",
+    "hnswlib",
+    "bigtree"
+]
+
+[project.optional-dependencies]
+image = [
+    "opencv-python",
+    "Pillow",
+    "torch",
+    "torchvision",
+    "timm",
+    "scikit-image",
+    "umap-learn",
+    "h5py",
+    "webdataset",
+    "einops",
+    "tqdm",
+    "psutil",
+    "tifffile",
+    "requests",
+    "brokenaxes"
+]
+
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "build",
+]
+
+notebook = [
+    "jupyterlab",
+    "ipykernel"
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["hicat_spatial*"]
+
+[tool.setuptools.package-data]
+"hicat_spatial.preprocessing.uni.histosweep_vendor" = [
+    "LICENSE.txt",
+    "README.md",
+    "requirements.txt",
+    "HistoSweep/README.md",
+]
+"hicat_spatial" = [
+    "preprocessing/README.md",
+    "preprocessing/hipt/checkpoints/README.md",
+    "preprocessing/uni/checkpoints/vit_large_patch16_224.dinov2.uni_mass100k/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+extend-exclude = [
+    "hicat_spatial/preprocessing/hipt",
+    "hicat_spatial/preprocessing/uni",
+]
+
+[tool.ruff.lint]
+# Start CI with correctness-focused checks. Formatting the historical analysis
+# modules is intentionally deferred to a separate, reviewable change.
+select = ["F"]
