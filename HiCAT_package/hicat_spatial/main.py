@@ -68,8 +68,8 @@ class HiCATWorkflowConfig:
 
     ``preprocessing`` is required. Later stage configurations are optional;
     omitted stages are skipped. ``output_root`` contains stages 2–7. Stage 1
-    uses ``preprocessing.preprocess_dir`` because its ``reference/raw`` and
-    ``query/raw`` input folders live there.
+    uses ``preprocessing.data_dir`` for flat raw inputs and
+    ``preprocessing.preprocess_dir`` for package-managed preprocessing outputs.
     """
 
     preprocessing: PreprocessConfig # required
