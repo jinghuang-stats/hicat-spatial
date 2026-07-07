@@ -29,6 +29,10 @@ _PRIMARY_EXPORTS = {
         ".pipelines.step2_tree_inference",
         "TreeInferenceStageConfig",
     ),
+    "construct_tree_reference_adata": (
+        ".pipelines.step2_tree_inference",
+        "construct_tree_reference_adata",
+    ),
     "run_tree_inference_stage": (
         ".pipelines.step2_tree_inference",
         "run_tree_inference_stage",
