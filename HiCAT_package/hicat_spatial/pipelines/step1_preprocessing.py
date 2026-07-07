@@ -1,8 +1,7 @@
 """End-to-end preprocessing entry point for HiCAT.
 
-This module turns raw section-level gene/protein AnnData objects and H&E
-images into consistently named preprocessing outputs. See
-``PREPROCESSING_PIPELINE_GUIDE.md`` for input and output file trees.
+This module turns flat-folder raw gene/protein AnnData objects and H&E images
+into consistently named preprocessing outputs.
 
 Typical use
 -----------
@@ -14,10 +13,12 @@ Typical use
     )
 
     config = PreprocessConfig(
-        preprocess_dir="./preprocess",
+        data_dir="./data",
+        preprocess_dir="./results/01_preprocessing",
         reference_sections=["ref_1", "ref_2"],
         query_sections=["query_1"],
         modalities=("Gene", "Image", "Protein"),
+        raw_file_mode="copy",
         gene_enhancement=True,
         label_color_dict={"tumor": (255, 0, 0), "stroma": (0, 255, 0)},
         image_feature_kwargs={
@@ -31,6 +32,7 @@ Typical use
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
@@ -60,13 +62,25 @@ class PreprocessConfig:
 
     Parameters
     ----------
+    data_dir : path-like
+        User-created flat folder containing raw input files. Expected molecular
+        defaults are ``{section}_ref_gene_raw.h5ad`` and
+        ``{section}_query_gene_raw.h5ad``; images use
+        ``{section}_image{ext}``.
     preprocess_dir : path-like
-        Root folder containing ``reference/raw`` and ``query/raw``.
+        Package-managed preprocessing/output folder. Stage 1 creates
+        ``reference/raw``, ``query/raw``, ``preprocessed`` and related
+        subfolders automatically.
     reference_sections, query_sections : sequence[str]
         Unique section IDs used in all input filenames.
     modalities : sequence[str], default=("Gene", "Image")
         Exact available modalities from ``"Gene"``, ``"Image"``, and
         ``"Protein"``. Outputs use that canonical order.
+    raw_file_mode : {"copy", "symlink", "none"}, default="copy"
+        How flat raw files from ``data_dir`` are handled. ``"copy"`` copies
+        them into ``preprocess_dir/<cohort>/raw``. ``"symlink"`` creates
+        symbolic links there. ``"none"`` reads directly from ``data_dir`` and
+        leaves the package-created raw folders empty.
     target_sum : float or None, default=10_000
         Per-observation molecular total. ``None`` skips total normalization.
     log1p : bool, default=True
@@ -103,19 +117,26 @@ class PreprocessConfig:
         Array-grid coordinates used by scan-based contour candidates.
     label_key : str, default="label"
         Reference tissue-region annotation column.
-    image_template : str, default="{section}_image{ext}"
-        Raw H&E filename template.
-    annotated_image_template : str, default="{section}_annotated_image{ext}"
-        Reference annotated-H&E filename template. Both templates require
-        ``{section}``; ``{ext}`` tries jpg, jpeg, png, tif, and tiff.
+    reference_gene_template, query_gene_template : str
+        Flat-folder Gene input filename templates.
+    reference_protein_template, query_protein_template : str
+        Flat-folder Protein input filename templates.
+    reference_image_template, query_image_template : str
+        Flat-folder raw H&E filename templates. ``{ext}``, if present, tries
+        jpg, jpeg, png, tif, and tiff.
+    reference_annotated_image_template : str
+        Flat-folder reference annotated-H&E filename template used when
+        ``label_color_dict`` is supplied.
     color_order : {"bgr", "rgb"}, default="bgr"
         H&E channel order supplied to enhancement. ``"bgr"`` matches OpenCV.
     """
 
+    data_dir: Path | str
     preprocess_dir: Path | str
     reference_sections: Sequence[str]
     query_sections: Sequence[str]
     modalities: Sequence[str] = ("Gene", "Image")
+    raw_file_mode: str = "copy"
     target_sum: Optional[float] = 10_000
     log1p: bool = True
     uppercase_features: bool = True
@@ -133,8 +154,13 @@ class PreprocessConfig:
     array_x_key: str = "array_x"
     array_y_key: str = "array_y"
     label_key: str = "label"
-    image_template: str = "{section}_image{ext}"
-    annotated_image_template: str = "{section}_annotated_image{ext}"
+    reference_gene_template: str = "{section}_ref_gene_raw.h5ad"
+    query_gene_template: str = "{section}_query_gene_raw.h5ad"
+    reference_protein_template: str = "{section}_ref_protein_raw.h5ad"
+    query_protein_template: str = "{section}_query_protein_raw.h5ad"
+    reference_image_template: str = "{section}_image{ext}"
+    query_image_template: str = "{section}_image{ext}"
+    reference_annotated_image_template: str = "{section}_annotated_image{ext}"
     color_order: str = "bgr"
 
 
@@ -208,6 +234,11 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
     modalities = _canonical_modalities(config.modalities)
     if not modalities:
         raise ValueError("At least one modality must be supplied.")
+    data_dir = Path(config.data_dir).expanduser()
+    if not data_dir.is_dir():
+        raise FileNotFoundError(f"data_dir does not exist or is not a folder: {data_dir}")
+    if config.raw_file_mode not in {"copy", "symlink", "none"}:
+        raise ValueError("raw_file_mode must be 'copy', 'symlink', or 'none'.")
     if "Image" in modalities and not ({"Gene", "Protein"} & set(modalities)):
         raise ValueError(
             "Image preprocessing needs Gene or Protein AnnData to provide spot coordinates."
@@ -216,12 +247,31 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
         raise ValueError("gene_enhancement=True requires the Gene modality.")
     if config.protein_enhancement and "Protein" not in modalities:
         raise ValueError("protein_enhancement=True requires the Protein modality.")
-    for template_name, template in (
-        ("image_template", config.image_template),
-        ("annotated_image_template", config.annotated_image_template),
-    ):
+    templates = (
+        ("reference_gene_template", config.reference_gene_template),
+        ("query_gene_template", config.query_gene_template),
+        ("reference_protein_template", config.reference_protein_template),
+        ("query_protein_template", config.query_protein_template),
+        ("reference_image_template", config.reference_image_template),
+        ("query_image_template", config.query_image_template),
+        (
+            "reference_annotated_image_template",
+            config.reference_annotated_image_template,
+        ),
+    )
+    for template_name, template in templates:
         if "{section}" not in template:
             raise ValueError(f"{template_name} must contain '{{section}}'.")
+    for template_name, template in (
+        ("reference_image_template", config.reference_image_template),
+        ("query_image_template", config.query_image_template),
+        (
+            "reference_annotated_image_template",
+            config.reference_annotated_image_template,
+        ),
+    ):
+        if "{ext}" not in template:
+            raise ValueError(f"{template_name} must contain '{{ext}}'.")
     for cohort_name, sections in (
         ("reference", config.reference_sections),
         ("query", config.query_sections),
@@ -231,6 +281,113 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
     return modalities
 
 
+def _data_dir(config):
+    return Path(config.data_dir).expanduser()
+
+
+def _active_raw_dir(config, paths):
+    return _data_dir(config) if config.raw_file_mode == "none" else paths.raw_dir
+
+
+def _molecular_template(config, cohort, modality):
+    cohort = str(cohort).lower()
+    modality = str(modality).lower()
+    if cohort == "reference" and modality == "gene":
+        return config.reference_gene_template
+    if cohort == "query" and modality == "gene":
+        return config.query_gene_template
+    if cohort == "reference" and modality == "protein":
+        return config.reference_protein_template
+    if cohort == "query" and modality == "protein":
+        return config.query_protein_template
+    raise ValueError(f"Unsupported cohort/modality combination: {cohort}, {modality}")
+
+
+def _image_template(config, cohort, annotated=False):
+    cohort = str(cohort).lower()
+    if annotated:
+        if cohort != "reference":
+            raise ValueError("Annotated images are only supported for references.")
+        return config.reference_annotated_image_template
+    if cohort == "reference":
+        return config.reference_image_template
+    if cohort == "query":
+        return config.query_image_template
+    raise ValueError(f"Unsupported cohort: {cohort}")
+
+
+def _resolve_data_file(config, section, template):
+    return resolve_section_file(_data_dir(config), section, template)
+
+
+def _iter_required_data_files(config, modalities, cohort, sections):
+    needs_images = (
+        "Image" in modalities or config.gene_enhancement or config.protein_enhancement
+    )
+    for section in sections:
+        if "Gene" in modalities:
+            yield _resolve_data_file(
+                config,
+                section,
+                _molecular_template(config, cohort, "Gene"),
+            )
+        if "Protein" in modalities:
+            yield _resolve_data_file(
+                config,
+                section,
+                _molecular_template(config, cohort, "Protein"),
+            )
+        if needs_images or (cohort == "reference" and config.label_color_dict is not None):
+            yield _resolve_data_file(
+                config,
+                section,
+                _image_template(config, cohort, annotated=False),
+            )
+        if cohort == "reference" and config.label_color_dict is not None:
+            yield _resolve_data_file(
+                config,
+                section,
+                _image_template(config, cohort, annotated=True),
+            )
+
+
+def _place_raw_file(source, raw_dir, mode):
+    source = Path(source).expanduser().resolve()
+    destination = Path(raw_dir) / source.name
+    if mode == "copy":
+        shutil.copy2(source, destination)
+    elif mode == "symlink":
+        if destination.exists() or destination.is_symlink():
+            destination.unlink()
+        destination.symlink_to(source)
+    else:
+        raise ValueError("mode must be 'copy' or 'symlink'.")
+    return destination
+
+
+def _organize_raw_inputs(config, paths, modalities):
+    if config.raw_file_mode == "none":
+        return {"reference": {}, "query": {}}
+
+    organized = {"reference": {}, "query": {}}
+    for cohort, sections in (
+        ("reference", config.reference_sections),
+        ("query", config.query_sections),
+    ):
+        seen = set()
+        for source in _iter_required_data_files(config, modalities, cohort, sections):
+            if source in seen:
+                continue
+            seen.add(source)
+            destination = _place_raw_file(
+                source,
+                paths[cohort].raw_dir,
+                config.raw_file_mode,
+            )
+            organized[cohort][source.name] = str(destination)
+    return organized
+
+
 def _empty_cohort_result(modalities):
     return {
         "spot": {modality: {} for modality in modalities},
@@ -238,8 +395,9 @@ def _empty_cohort_result(modalities):
     }
 
 
-def _load_molecular_cohort(config, paths, sections, modalities):
+def _load_molecular_cohort(config, paths, sections, modalities, cohort):
     result = _empty_cohort_result(modalities)
+    raw_dir = _active_raw_dir(config, paths)
     common_kwargs = dict(
         target_sum=config.target_sum,
         log1p=config.log1p,
@@ -252,15 +410,17 @@ def _load_molecular_cohort(config, paths, sections, modalities):
     if "Gene" in modalities:
         result["spot"]["Gene"] = preprocess_molecular_sections(
             sections,
-            paths.raw_dir,
+            raw_dir,
             modality="Gene",
+            file_template=_molecular_template(config, cohort, "Gene"),
             **common_kwargs,
         )
     if "Protein" in modalities:
         result["spot"]["Protein"] = preprocess_molecular_sections(
             sections,
-            paths.raw_dir,
+            raw_dir,
             modality="Protein",
+            file_template=_molecular_template(config, cohort, "Protein"),
             replace_zeros=config.protein_replace_zeros,
             zero_replacement_scale=config.zero_replacement_scale,
             **common_kwargs,
@@ -268,10 +428,11 @@ def _load_molecular_cohort(config, paths, sections, modalities):
     return result
 
 
-def _resolved_images(config, paths, sections, annotated=False):
-    template = config.annotated_image_template if annotated else config.image_template
+def _resolved_images(config, paths, sections, cohort, annotated=False):
+    template = _image_template(config, cohort, annotated=annotated)
+    raw_dir = _active_raw_dir(config, paths)
     return {
-        section: resolve_section_file(paths.raw_dir, section, template)
+        section: resolve_section_file(raw_dir, section, template)
         for section in sections
     }
 
@@ -307,13 +468,19 @@ def _add_reference_annotations(config, result, paths, images, sections):
             extract_scribble_labels_pipeline,
         )
 
-        annotated_images = _resolved_images(config, paths, sections, annotated=True)
+        annotated_images = _resolved_images(
+            config,
+            paths,
+            sections,
+            cohort="reference",
+            annotated=True,
+        )
         for section in sections:
             kwargs = dict(config.scribble_kwargs)
             kwargs.update(
                 ref_adata_dic={section: result["spot"][annotation_source][section]},
                 ref_section_list=[section],
-                data_path=str(paths.raw_dir),
+                data_path=str(images[section].parent),
                 label_color_dict=dict(config.label_color_dict),
                 image_template=images[section].name,
                 annotated_image_template=annotated_images[section].name,
@@ -533,13 +700,14 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
 
     Required raw inputs
     -------------------
-    For every listed section, place the selected modality files under
-    ``<preprocess_dir>/<cohort>/raw``:
+    For every listed section, place the selected files in ``data_dir``:
 
-    - ``{section}_gene_raw.h5ad`` for Gene;
-    - ``{section}_protein_raw.h5ad`` for Protein;
-    - an H&E matching ``image_template`` for Image or enhancement;
-    - a reference annotated H&E matching ``annotated_image_template`` when
+    - ``{section}_ref_gene_raw.h5ad`` for reference Gene;
+    - ``{section}_query_gene_raw.h5ad`` for query Gene;
+    - ``{section}_ref_protein_raw.h5ad`` for reference Protein;
+    - ``{section}_query_protein_raw.h5ad`` for query Protein;
+    - an H&E matching the cohort image template for Image or enhancement;
+    - a reference annotated H&E matching ``reference_annotated_image_template`` when
       ``label_color_dict`` is supplied.
 
     Molecular ``.obs`` must contain ``x_key``/``y_key``. Scan-based contour
@@ -567,30 +735,42 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
     """
     modalities = _validate_config(config)
 
-    # Step 1: establish input/output folders.
+    # Step 1: establish package-managed preprocessing folders and optionally
+    # organize flat raw inputs into their cohort-specific raw folders.
     paths = {
         cohort: create_preprocess_output_dirs(config.preprocess_dir, cohort)
         for cohort in ("reference", "query")
     }
+    raw_input_manifest = _organize_raw_inputs(config, paths, modalities)
 
     # Step 2: preprocess raw molecular data.
     reference = _load_molecular_cohort(
-        config, paths["reference"], config.reference_sections, modalities
+        config, paths["reference"], config.reference_sections, modalities, "reference"
     )
     query = _load_molecular_cohort(
-        config, paths["query"], config.query_sections, modalities
+        config, paths["query"], config.query_sections, modalities, "query"
     )
 
     needs_images = (
         "Image" in modalities or config.gene_enhancement or config.protein_enhancement
     )
     reference_images = (
-        _resolved_images(config, paths["reference"], config.reference_sections)
+        _resolved_images(
+            config,
+            paths["reference"],
+            config.reference_sections,
+            cohort="reference",
+        )
         if needs_images or config.label_color_dict is not None
         else {}
     )
     query_images = (
-        _resolved_images(config, paths["query"], config.query_sections)
+        _resolved_images(
+            config,
+            paths["query"],
+            config.query_sections,
+            cohort="query",
+        )
         if needs_images
         else {}
     )
@@ -655,5 +835,7 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
     )
     stage_root = Path(config.preprocess_dir).expanduser()
     save_stage_result(result, stage_root / "preprocessing_result.pkl")
-    save_json(asdict(config), stage_root / "stage_config.json")
+    stage_config = asdict(config)
+    stage_config["organized_raw_inputs"] = raw_input_manifest
+    save_json(stage_config, stage_root / "stage_config.json")
     return result
