@@ -4,16 +4,18 @@
 
 ### Outline
 1. [Installation](#1-installation)
-2. [Import modules](#2-import-python-modules)
-3. [Read in data](#3-read-in-data)
-4. [Data preprocessing](#4-data-preprocessing)
-5. [Tree inference](#5-tree-inference)
-6. [Heterogeneity inference](#6-heterogeneity-inference)
-7. [Reference selection](#7-reference-selection)
-8. [Label Transfer](#8-label-transfer)
+2. [Read in data](#2-input-data-and-folder-layout)
+3. [Import modules](#3-imports-and-run-settings)
+4. [Stage 1: Preprocessing](#stage-1-preprocessing)
+5. [Stage 2: Tree inference](#stage-2-tree-inference)
+6. [Stage 3: Reference selection](#stage-3-reference-selection)
+7. [Stage 4: Hierarchical feature selection](#stage-4-hierarchical-feature-selection)
+8. [Stage 5: Determine clustering configurations](#stage-5-determine-clustering-configurations)
+9. [Stage 6: Label transfer](#stage-6-label-transfer)
+10. [Stage 7: Heterogeneity inference](#stage-7-heterogeneity-inference)
 
 ### 1. Installation
-To install HiCAT package you must make sure that your python version is over 3.5. If you don’t know the version of python you can check it by:
+To install HiCAT package you must make sure that your python version is over 3.9. If you don’t know the version of python you can check it by:
 
 
 ```python
@@ -22,424 +24,414 @@ platform.python_version()
 ```
 
 <br>
-Now you can install the current release of HiCAT by the following three ways:
-
-#### 1.1 PyPI: Directly install the package from PyPI
-
-
+Create an environment and install the package from the GitHub/local folder:
 ```python
-pip3 install HiCAT
-# Note: you need to make sure that the pip is for python3
+conda create -n hicat-spatial python=3.11 -y
+conda activate hicat-spatial
 
-# or we could install HiCAT by
-python3 -m pip install HiCAT
-
-# If you do not have permission (when you get a permission denied error), you should install HiCAT by
-pip3 install --user HiCAT
-```
-
-#### 1.2 Github
-Download the package from Github and install it locally:
-
-
-```python
-git clone https://github.com/jinghuang-stats/HiCAT
-cd HiCAT/HiCAT_package/
-python3 setup.py install --user
-```
-
-#### 1.3 Anaconda
-If you do not have Python3.5 or Python3.6 installed, consider installing Anaconda (see Installing Anaconda). After installing Anaconda, you can create a new environment, for example, HiCAT_env (or any name that you like).
-
-
-```python
-# create an environment called HiCAT_env
-conda create -n HiCAT_env python=3.11.5 -y
-
-# activate your environment 
-conda activate HiCAT_env
-
-git clone https://github.com/jinghuang-stats/HiCAT
-cd HiCAT/HiCAT_package/
-python3 setup.py build
-python3 setup.py install
-conda deactivate
-```
-
-### 2. Import python modules
-
-
-```python
-import os, csv, time, pickle
-import warnings
-warnings.filterwarnings('ignore')
-import statistics
-import hnswlib
-import math
-import cv2
-import pandas as pd
-import numpy as np
-import scanpy as sc
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.colors as clr
-import anndata as ad
-import TESLA as tesla
-import HiCAT as hicat
-from sklearn import metrics
-from sklearn.metrics import pairwise_distances
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import MinMaxScaler
-from anndata import AnnData
-from scipy.sparse import issparse
-from scipy.stats import rankdata
-from scipy.spatial.distance import cdist, pdist, squareform
+git clone https://github.com/jinghuang-stats/hicat-spatial.git
+cd hicat-spatial
+python -m pip install --upgrade pip
+python -m pip install -e ".[notebook]
 
 ```
 
-
+Install the image extras if extracting image features (e.g., by HIPT or UNI)
 ```python
-hicat.__version__
+python -m pip install -e ".[image,notebook]
+
 ```
 
-    '1.0.0'
+Check the package imports and version
+```python
+from importlib.metadata import version
+import hicat_spatial
 
+print(version("hicat-spatial"))
+print(hicat_spatial.HiCAT)
 
-### 3. Read in data
-Data notes:
-- Toydata are made available at the [shared folder](https://drive.google.com/drive/folders/1BaqScSe3mxz7JGlixYd-4SSmzHZBOoVb?usp=share_link).
+```
+
+Expected version for this tutorial:
+```text
+0.1.0
+```
+
+### 2. Input data and folder layout
+- Toydata for this tutorial are made available at the [shared folder](https://drive.google.com/drive/folders/1BaqScSe3mxz7JGlixYd-4SSmzHZBOoVb?usp=share_link)
+- Create one flat raw-data folder (the tutorial uses ``data/``) to include raw reference and query gene adata as well as associated images if extracting image features is needed, e.g.,
+```text
+data/
+	H1_ref_gene_raw.h5ad
+	G2_ref_gene_raw.h5ad
+	E1_ref_gene_raw.h5ad
+	H2_query_gene_raw.h5ad
+
+	H1_image.jpg
+	G2_image.jpg
+	E1_image.jpg
+	H2_image.jpg
+
+	H1_annotated_image.jpg
+	G2_annotated_image.jpg
+	E1_annotated_image.jpg
+
+```
 - We also provided precomputed reference information available in the [results folder](https://drive.google.com/drive/folders/1dvCbkgciSRbCc7SAMad0dBVa2tEQtMI-?usp=sharing). Users can directly use these files to perform label transfer for breast cancer tissue type, without having to construct their own reference datasets or generate reference information from scratch. 
   The precomputed reference information includes:
-  - node_dic: A dictionary mapping each tree node to its corresponding tissue regions;
-  - adj_dic: A dictionary describing parent-child relationships in the hierarchical tree;
-  - hier_genes: Reference-specific hierarchical marker genes to guide each split.
+  - preprocessed reference ``gene adata`` and associated ``image adata``, with annotations included in ``adata.obs[label_key]``
+  - ``hier_tree``: inferred hierarchical tree structure
+  - ``multimodal_features``: identified multi-modal hierarchical features set to guide each hierarchical split
 - Intermediate results are saved in the [figures folder](https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial/figures).
 <br>
 
-
-The current version of HiCAT requires two main input data: 
-1. Reference gene expression matrix: ref_expression_matrix.h5ad
-This file should be an AnnData object with dimensions (N $\times$ G), where (N) is the nuber of spots/cells and (G) is the number of genes. The expression matrix is stored in .X, while .obs contains pathologist-generated annotations. Gene-level information is stored in .var, and additional unstructured information can be stored in .uns. 
-2. Query gene expression matrix: qry_expression_matrix.h5ad
-This file should also be an AnnData object with dimensions (N $\times$ G), containing the gene expression matrix for the query dataset to be annotated. 
-
-Optional input:
-3. Query image feature matrix: qry_image_matrix.h5ad
-This optional file contains morphology-derived image features for the query data, with dimensions (N $\times$ I), where I is the number of image features.
-
+### 3. Imports and run settings
 ```python
-# Set the working directory
-plot_dir="." # set a data directory (need to make up folders of results and figures)
-if not os.path.exists(plot_dir+"/figures"):
-	os.mkdir(plot_dir+"/figures")
+from pathlib import Path
 
+import pandas as pd
 
-if not os.path.exists(plot_dir+"/results"):
-	os.mkdir(plot_dir+"/results")
-
-
+from hicat_spatial import (
+    ClusteringConfigStageConfig,
+    HeterogeneityStageConfig,
+    HierarchicalFeatureStageConfig,
+    LabelTransferStageConfig,
+    PreprocessConfig,
+    ReferenceSelectionStageConfig,
+    TreeInferenceStageConfig,
+    construct_tree_reference_adata,
+    load_stage_result,
+    run_clustering_config_stage,
+    run_heterogeneity_stage,
+    run_hierarchical_feature_stage,
+    run_label_transfer_stage,
+    run_preprocessing_pipeline,
+    run_reference_selection_stage,
+    run_tree_inference_stage,
+)
 ```
 
-
 ```python
-data_path = "./toy_data"
-dataset_name = "HER2+BC"
+analysis_root = Path("tutorial_results")
+data_dir = Path("data")
+preprocess_dir = analysis_root / "01_preprocessing"
+
+reference_sections = ["H1", "G2", "E1"]
+query_sections = ["H2"]
+
 label_key = "label"
-sample_key = "sample"
-low_exp_thres = 0.02
+x_key = "pixel_x"
+y_key = "pixel_y"
+```
 
-# Read in reference adata
-ref_section_list = ["H1", "G2", "E1"]
+Create the raw-data folder:
 
-ref_results = construct_ref_adata_dic(
-    ref_section_list=ref_section_list,
-    data_path=data_path,
-    dataset_name=dataset_name,
-    file_template="sudo_{dataset_name}_{section}_log_s=1_res=50_nbr=10_k=2.h5ad",
+```python
+data_dir.mkdir(parents=True, exist_ok=True)
+```
+
+Then copy your raw `.h5ad` and image files into `data_dir` before running Stage 1. HiCAT will create the preprocessing folder tree automatically.
+
+### Stage 1: Preprocessing
+Stage 1 reads raw files, performs normalization and log-transformation, extracts scribble labels, performs optional gene expression enhancement if Spatial Transcriptomics data, and saves preprocessed objects.
+
+For annotations, `label_color_dict=None` means Stage 1 will not extract scribbles from annotated images. In that case, each reference section should already contain labels in `adata.obs[label_key]`, for example `adata.obs["label"]`.
+
+If image features were already extracted and saved as `.h5ad` files, use `image_feature_mode="load"` instead of re-running UNI/HIPT extraction.
+
+```python
+preprocess_config = PreprocessConfig(
+    data_dir=data_dir,
+    preprocess_dir=preprocess_dir,
+    reference_sections=reference_sections,
+    query_sections=query_sections,
+    modalities=("Gene","Image"),
+    raw_file_mode="copy",
+    target_sum=10_000,
     label_key=label_key,
-    sample_key=sample_key,
-    low_exp_thres=low_exp_thres,
+    x_key=x_key,
+    y_key=y_key,
 )
 
-ref_adata_dic = ref_results["ref_adata_dic_raw"]
-ref_adata_sca_dic = ref_results["ref_adata_dic_filtered"]
-all_adata_sca = ref_results["all_adata"]
-ref_common_genes = ref_results["common_genes"]
-
+preprocess_result = run_preprocessing_pipeline(preprocess_config)
 ```
 
-```python
-# Read in qry adata
-qry_section = "H2"
+Access the processed objects:
 
-qry_file = os.path.join(
-    data_path,
-    f"sudo_{dataset_name}_{qry_section}_log_s=1_res=50_nbr=10_k=2+hipt.h5ad"
+```python
+reference_gene = preprocess_result.reference["enhanced"]["Gene"]
+query_gene = preprocess_result.query["enhanced"]["Gene"]
+
+ref_h1 = preprocess_result.get_adata("reference", "enhanced", "Gene", "H1")
+query_h2 = preprocess_result.get_adata("query", "enhanced", "Gene", "H2")
+
+print(reference_gene.keys())
+print(query_h2)
+```
+
+### Stage 2: Tree inference
+Stage 2 builds a hierarchy of annotated reference regions.
+
+```python
+tree_inputs = construct_tree_reference_adata(
+    preprocess_result,
+    modalities=("Gene","Image"),
+    level="enhanced",
 )
 
-qry_adata = sc.read_h5ad(qry_file)
-
-```
-
-### 4. Data preprocessing
-```python
-label_color_dict = {
-    "cancer_in_situ": [254, 128, 22],
-    "connective_tissue": [63, 72, 203],
-    "adipose_tissue": [113, 227, 223],
-    "invasive_cancer": [236, 28, 36],
-    "breast_glands": [15, 209, 69],
-    "immune_infiltrate": [255, 242, 4],
-}
-
-output_dir = "./figures"
-os.makedirs(output_dir, exist_ok=True)
-
-# Extract scribble masks for reference sections
-for ref_section in ref_section_list:
-    image_path = os.path.join(data_path, f"{ref_section}.jpg")
-    annotated_image_path = os.path.join(data_path, f"{ref_section}_annotated.jpg")
-
-    ref_mask, label_id_mask, d_mask = extract_scribble_masks(
-        image_path=image_path,
-        annotated_image_path=annotated_image_path,
-        label_color_dict=label_color_dict,
-        output_dir=output_dir,
-    )
-
-# Split query data into gene and image features
-qry_features = qry_adata.var.index.tolist()
-
-qry_gene_features = [f for f in qry_features if "hipt" not in f]
-qry_img_features = [f for f in qry_features if "hipt" in f]
-
-qry_gene_adata = qry_adata[:, qry_adata.var.index.isin(qry_gene_features)].copy()
-qry_img_adata = qry_adata[:, qry_adata.var.index.isin(qry_img_features)].copy()
-
-print("Query gene features:", qry_gene_adata.n_vars)
-print("Query image features:", qry_img_adata.n_vars)
-
-```
-
-### 5. Tree inference
-#### 5.1 Integrate multi-modal distances
-```python
-gene_filtering_paras = {
-    "min_fold_change": 1.1,
-    "min_in_out_group_ratio": 1,
-    "min_in_group_fraction": 0,
-    "pvals_adj": 0.05,
-    "gene_num": 10,
-}
-
-image_filtering_paras = {
-    "min_fold_change": 1.1,
-    "min_in_out_group_ratio": 1,
-    "min_in_group_fraction": 0,
-    "pvals_adj": 0.05,
-    "gene_num": 5,
-}
-
-features_dic = {}
-
-for sample in ref_section_list:
-    sample_adata = ref_adata_dic[sample]
-
-    all_features = sample_adata.var.index.tolist()
-
-    gene_features = [f for f in all_features if "hipt" not in f]
-    image_features = [f for f in all_features if "hipt" in f]
-
-    gene_adata = sample_adata[:, sample_adata.var.index.isin(gene_features)].copy()
-    image_adata = sample_adata[:, sample_adata.var.index.isin(image_features)].copy()
-
-    region_genes_dic, gene_list = tree_str_gene_selection(
-        input_adata=gene_adata,
-        gene_num=gene_filtering_paras["gene_num"],
-        min_fold_change=gene_filtering_paras["min_fold_change"],
-        min_in_out_group_ratio=gene_filtering_paras["min_in_out_group_ratio"],
-        min_in_group_fraction=gene_filtering_paras["min_in_group_fraction"],
-        pvals_adj=gene_filtering_paras["pvals_adj"],
+tree_result = run_tree_inference_stage(
+    ref_adata_dic=tree_inputs,
+    config=TreeInferenceStageConfig(
+        output_dir=analysis_root / "02_tree_inference",
         label_key=label_key,
+        x_key=x_key,
+        y_key=y_key,
+        image_available=True,
+        weights={"w_G": 1.0, "w_I": 1.0, "w_S": 1.0},
+        show_tree=False,
+    ),
+)
+
+hier_tree = tree_result["tree"]
+split_table = tree_result["split_df"]
+
+print(hier_tree.get_internal_nodes())
+print(split_table)
+```
+
+### Stage 3: Reference selection
+Stage 3 selects the suitable and compatible reference sections for the target query section to provide the matched supervision
+
+```python
+reference_result = run_reference_selection_stage(
+    ref_gene_dic=preprocess_result.reference["enhanced"]["Gene"],
+    query_gene_dic=preprocess_result.query["enhanced"]["Gene"],
+    config=ReferenceSelectionStageConfig(
+        output_dir=analysis_root / "03_reference_selection",
+        label_key=label_key,
+        selection_mode="cutoff",
+        alpha=0.85,
+    ),
+)
+
+selected_refs_dic = reference_result.selected_refs_dic
+
+print(reference_result.to_summary_df())
+print(reference_result.get_selected_refs("H2"))
+```
+
+Stage 3 also keeps processed molecular objects that are useful for Stage 6:
+
+```python
+scaled_reference_gene = reference_result.ref_adata_dic
+scaled_query_gene = reference_result.qry_adata_dic
+```
+
+### Stage 4: Hierarchical feature selection
+Stage 4 selects split-specific features for every query-specific reference set.
+
+```python
+feature_result = run_hierarchical_feature_stage(
+    ref_adata_by_modality=preprocess_result.reference["enhanced"],
+    hier_tree=hier_tree,
+    selected_refs_dic=selected_refs_dic,
+    config=HierarchicalFeatureStageConfig(
+        output_dir=analysis_root / "04_hierarchical_features",
+        anchor_scenario="nn_based",
+        filtering_paras_by_modality={
+            "Gene": {
+                "label_key": label_key,
+                "pvals_adj": 0.05,
+                "min_in_out_group_ratio": 1.0,
+                "min_in_group_fraction": 0.0,
+                "min_fold_change": 1.15,
+                "gene_num": 10,
+                "logged": True,
+            }
+        },
+        count_num=1,
+    ),
+)
+
+gene_features_h2 = feature_result.get_modality_result("H2", "Gene")
+multimodal_features_h2 = feature_result.get_multimodal_result("H2")
+
+print(gene_features_h2.available_parent_nodes())
+```
+
+### Stage 5: Determine clustering configurations
+Stage determines the informative modalities and embedding choices. It does not choose the final clustering method, please specify ``KMeans`` or ``Leiden`` afterwards.
+```python
+embedding_result = run_clustering_config_stage(
+    ref_adata_by_modality=preprocess_result.reference["enhanced"],
+    feature_stage_result=feature_result,
+    config=ClusteringConfigStageConfig(
+        output_dir=analysis_root / "05_clustering_config",
+        included_modalities=("Gene","Image"),
+        features_format="auto",
+        evaluate_all_nodes=False,
+        label_key=label_key,
+        parameters={
+            "candidate_methods": ("pca", "selected_features"),
+            "selection_criterion": "both",
+            "hard_threshold": 0.5,
+            "alpha": 0.85,
+            "pcs_num_dic": {"Gene": 30, "Image": 10},
+            "default_pcs_num": 30,
+            "random_state": 0,
+        },
+    ),
+)
+
+print(embedding_result.get_result("H2").summary())
+```
+
+For a binary hierarchy split, KMeans with two clusters is a simple starting
+point:
+
+```python
+clustering_configs = {
+    query_section: embedding_result.to_clustering_config(
+        query_section=query_section,
+        clustering_method="kmeans",
+        n_clusters=2,
+        random_state=0,
     )
+    for query_section in query_sections
+}
 
-    if image_adata.n_vars > 0:
-        region_image_dic, image_list = tree_str_gene_selection(
-            input_adata=image_adata,
-            gene_num=image_filtering_paras["gene_num"],
-            min_fold_change=image_filtering_paras["min_fold_change"],
-            min_in_out_group_ratio=image_filtering_paras["min_in_out_group_ratio"],
-            min_in_group_fraction=image_filtering_paras["min_in_group_fraction"],
-            pvals_adj=image_filtering_paras["pvals_adj"],
-            label_key=label_key,
-        )
-    else:
-        image_list = []
+print(clustering_configs["H2"])
+```
 
-    features_dic[sample] = {
-        "gene": gene_list,
-        "image": image_list,
+Leiden is another option:
+
+```python
+leiden_config = embedding_result.to_clustering_config(
+    query_section="H2",
+    clustering_method="leiden",
+    resolution=0.5,
+    n_neighbors=15,
+)
+```
+
+### Stage 6: Label transfer
+Stage 6 needs explicit jobs because each transfer scenario expects a different
+reference dictionary layout.
+
+| Scenario | `scenario` value | Reference dictionary structure |
+|---|---|---|
+| Single-reference NN | `single_ref_nn` | `{modality: AnnData}` |
+| Multi-reference NN | `multi_ref_nn` | `{section: {modality: AnnData}}` |
+| Quantile based | `quantile` | `{modality: {section: AnnData}}` plus merged references |
+
+This tutorial uses multi-reference nearest-neighbor transfer.
+
+```python
+jobs = {}
+
+for query_section in query_sections:
+    selected_refs = reference_result.get_selected_refs(query_section)
+
+    jobs[query_section] = {
+        "ref_section_list": selected_refs,
+
+        # Used for anchor detection.
+        # Multi-ref NN expects: {ref_section: {modality: AnnData}}
+        "ref_adata_sca_dic": {
+            ref_section: {
+                "Gene": reference_gene_for_anchor[ref_section],
+            }
+            for ref_section in selected_refs
+        },
+
+        # Used for query clustering, final labels, outputs, and optional image refinement.
+        "query_adata_dic": {
+            "Gene": preprocess_result.query["enhanced"]["Gene"][query_section],
+            "Image": preprocess_result.query["enhanced"]["Image"][query_section],
+        },
+
+        # Used for anchor detection.
+        # Usually only molecular modalities are needed here.
+        "query_adata_sca_dic": {
+            "Gene": query_gene_for_anchor[query_section],
+        },
+
+        "hier_tree": hier_tree,
+
+        "gene_feature_results": feature_result.get_modality_result(
+            query_section, "Gene"
+        ),
+
+        "image_feature_results": feature_result.get_modality_result(
+            query_section, "Image"
+        ),
+
+        "clustering_config": clustering_configs[query_section],
     }
-
-print(features_dic)
-
 ```
 
-#### 5.2 Infer hierarchical tree structure
-```python
-weights = {
-    "w_G": 1,
-    "w_I": 1,
-    "w_S": 1,
-}
+Run automatic transfer:
 
-integrated_dists, integrated_ranks, sample_dists_dic = multi_sample_distance(
-    adata_dic=ref_adata_dic,
-    features_dic=features_dic,
-    w_G=weights["w_G"],
-    w_I=weights["w_I"],
-    w_S=weights["w_S"],
-    neighbors=None,
-    shape="hexagon",
-    x_key="x",
-    y_key="y",
-    label_key=label_key,
-    scale=True,
-    return_sample_dists=True,
+```python
+transfer_stage_result = run_label_transfer_stage(
+    jobs=jobs,
+    config=LabelTransferStageConfig(
+        scenario="multi_ref_nn",
+        output_dir=analysis_root / "06_label_transfer",
+        mode="auto",
+        parameters={
+            "label_key": label_key,
+            "final_label_key": "hicat_label",
+            "unassigned_label": "novel_cluster",
+            "print_results": True,
+        },
+        postprocess=True,
+        postprocess_parameters={
+            "x_key": x_key,
+            "y_key": y_key,
+            "refine": True,
+            "num_nbs": 25,
+        },
+    ),
 )
 
-tree = build_hier_tree(rank_matrix=integrated_ranks, show=True)
-split_df = make_split_table(tree)
+h2_result = transfer_stage_result.get_result("H2")
 
-save_tree_inference_results(
-    config_dir=output_dir,
-    tree=tree,
-    integrated_dists=integrated_dists,
-    integrated_ranks=integrated_ranks,
-    sample_dists_dic=sample_dists_dic,
-    split_df=split_df,
+print(h2_result.final_labels.value_counts(dropna=False))
+print(h2_result.round_summary())
+print(h2_result.is_complete())
+```
+
+Annotated query objects are stored in the result:
+
+```python
+annotated_query_gene = h2_result.query_adata_dic["Gene"]
+print(annotated_query_gene.obs["hicat_label"].head())
+```
+
+### Stage 7: Heterogeneity inference
+Stage 7 evaluates the region-specific heterogeneity levels across reference sections. And for those heterogeneous regions, it further identified heterogeneity subtypes within it.
+
+```python
+heterogeneity_result = run_heterogeneity_stage(
+    ref_gene_dic=preprocess_result.reference["spot"]["Gene"],
+    config=HeterogeneityStageConfig(
+        output_dir=analysis_root / "07_heterogeneity",
+        dataset_name="tutorial_dataset",
+        parameters={
+            "label_key": label_key,
+            "sample_key": "sample",
+            "selection_method": "threshold",
+            "hetero_threshold": 0.5,
+            "run_subtype": False,
+            "n_perm": 200,
+            "random_state": 0,
+        },
+    ),
 )
 
+print(heterogeneity_result.selected_regions)
+print(heterogeneity_result.hetero_summary)
 ```
 
-### 6. Heterogeneity inference
-```python
-tissue_region_list = [
-    "adipose_tissue",
-    "connective_tissue",
-    "breast_glands",
-    "immune_infiltrate",
-    "cancer_in_situ",
-    "invasive_cancer",
-]
-
-results_bc = infer_heterogeneity_scores(
-    ref_adata_dic=ref_adata_dic,
-    all_adata=all_adata_sca,
-    tissue_region_list=tissue_region_list,
-    label_key=label_key,
-    sample_key=sample_key,
-    low_exp_thres=low_exp_thres,
-    gene_num=gene_filtering_paras["gene_num"],
-    min_fold_change=gene_filtering_paras["min_fold_change"],
-    min_in_out_group_ratio=gene_filtering_paras["min_in_out_group_ratio"],
-    min_in_group_fraction=gene_filtering_paras["min_in_group_fraction"],
-    pvals_adj=gene_filtering_paras["pvals_adj"],
-)
-
-bc_hetero_summary = results_bc["hetero_summary"]
-
-```
-
-### 7. Reference selection
-```python
-qry_adata_dic = {
-    qry_section: qry_gene_adata,
-}
-
-sort_by = "similarity"
-
-results_dic = select_references_pipeline(
-    ref_adata_dic=ref_adata_sca_dic,
-    qry_adata_dic=qry_adata_dic,
-    sort_by=sort_by,
-)
-
-selected_refs_dic = results_dic["selected_refs_dic"]
-print(selected_refs_dic)
-print(selected_refs_dic)
-
-```
-
-### 8. Label transfer
-#### 8.1 Hierarchical feature selection
-```python
-gene_feature_results = select_hierarchical_genes_pipeline(
-    ref_adata_dic=ref_gene_dic,
-    hier_tree=inferred_tree,
-    anchor_scenario=anchor_scenario,
-    filtering_paras=gene_filtering_paras,
-    count_num=1,
-)
-
-image_feature_results = select_hierarchical_genes_pipeline(
-    ref_adata_dic=ref_image_dic, # need to be nonnegative 
-    hier_tree=inferred_tree,
-    anchor_scenario=anchor_scenario,
-    filtering_paras=image_filtering_paras,
-    count_num=1,
-)
-
-```
-
-#### 8.2 Determine clustering configurations
-```python
-config_result = determine_multi_modal_embedding_config(
-    included_modalities = included_modalities,
-    ref_section_list = ref_section_list,
-    ref_gene_dic = ref_gene_dic,
-    ref_image_dic = ref_image_dic,
-    features_dic = gene_feature_results.get_clustering_features(inferred_tree.root_node),
-    features_format = "section",
-    label_key = label_key,
-    hard_threshold = 0.3,
-    alpha = 0.8,
-    selection_criterion = "both",
-    n_pcs_dic = n_pcs_dic,
-    default_pcs_num = 30,
-    candidate_methods = ("pca", "selected_features"),
-	)
-
-selected_modalities = config_result.selected_modalities
-dim_reduction_method = config_result.dim_reduction_method
-print(selected_modalities)
-print(dim_reduction_method)
-
-clustering_config = config_result.to_clustering_config(
-	clustering_method = clustering_method,
-	resolution = resolution,
-	n_neighbors = n_neighbors,
-	)
-
-```
-#### 8.3 Hierarchical label transfer
-```python
-qry_nodes_dic = label_transfer(
-	ref_gene_sca_dic = ref_gene_sca_dic,
-	qry_adata_dic = qry_adata_dic,
-	hier_tree = tree,
-	hier_genes_dic = gene_feature_results,
-	hier_image_dic = image_feature_results,
-	output_dir = output_dir,
-	clustering_config = clustering_config,
-	knn = knn,
-	label_key = label_key,
-	cluster_key = cluster_key,
-	fig_paras = fig_paras,
-	)
-
-qry_adata = fit_labels(qry_adata, hier_tree, annotation_key, refined_key, novel_key, smooth_labels, fig_paras)
-
-```
 
