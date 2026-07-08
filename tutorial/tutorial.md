@@ -26,11 +26,11 @@ platform.python_version()
 <br>
 Create an environment and install the package from the GitHub/local folder:
 ```python
-conda create -n hicat-spatial python=3.11 -y
-conda activate hicat-spatial
+conda create -n hicat python=3.11 -y
+conda activate hicat
 
-git clone https://github.com/jinghuang-stats/hicat-spatial.git
-cd hicat-spatial
+git clone https://github.com/jinghuang-stats/HiCAT.git
+cd HiCAT
 python -m pip install --upgrade pip
 python -m pip install -e ".[notebook]
 
