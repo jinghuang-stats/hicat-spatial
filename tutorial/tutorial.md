@@ -24,8 +24,10 @@ platform.python_version()
 ```
 
 <br>
+
 Create an environment and install the package from the GitHub/local folder:
-```python
+
+```bash
 conda create -n hicat python=3.11 -y
 conda activate hicat
 
@@ -33,17 +35,19 @@ git clone https://github.com/jinghuang-stats/HiCAT.git
 cd HiCAT
 
 python -m pip install --upgrade pip
-python -m pip install -e ".[notebook]
+python -m pip install -e ".[notebook]"
 
 ```
 
 Install the image extras if extracting image features (e.g., by HIPT or UNI)
-```python
-python -m pip install -e ".[image,notebook]
+
+```bash
+python -m pip install -e ".[image,notebook]"
 
 ```
 
 Check the package imports and version
+
 ```python
 from importlib.metadata import version
 import hicat_spatial
