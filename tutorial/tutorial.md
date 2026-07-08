@@ -31,6 +31,7 @@ conda activate hicat
 
 git clone https://github.com/jinghuang-stats/HiCAT.git
 cd HiCAT
+
 python -m pip install --upgrade pip
 python -m pip install -e ".[notebook]
 
