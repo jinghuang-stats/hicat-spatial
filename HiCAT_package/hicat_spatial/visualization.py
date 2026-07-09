@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 import matplotlib.pyplot as plt
+from matplotlib.colors import is_color_like
 import pandas as pd
 import scanpy as sc
 
@@ -26,8 +28,8 @@ def get_cluster_palette(cluster_labels, cat_color):
     cluster_labels : array-like
         Observed cluster labels.
 
-    cat_color : list
-        List of categorical colors.
+    cat_color : list or dict
+        List of categorical colors, or a mapping from observed label to color.
 
     Returns
     -------
@@ -36,10 +38,20 @@ def get_cluster_palette(cluster_labels, cat_color):
     """
 
     if cat_color is None or len(cat_color) == 0:
-        raise ValueError("cat_color must be a non-empty list of colors.")
+        raise ValueError("cat_color must be a non-empty palette or color mapping.")
 
     labels = pd.Series(cluster_labels).dropna().astype(str).unique().tolist()
     labels = sorted(labels)
+
+    if isinstance(cat_color, Mapping):
+        color_by_label = _normalize_color_mapping(cat_color)
+        missing_labels = [label for label in labels if label not in color_by_label]
+        if missing_labels:
+            raise ValueError(
+                "cat_color is missing colors for observed labels: "
+                f"{missing_labels}."
+            )
+        return [color_by_label[label] for label in labels]
 
     cluster_palette = [
         cat_color[i % len(cat_color)]
@@ -47,6 +59,49 @@ def get_cluster_palette(cluster_labels, cat_color):
     ]
 
     return cluster_palette
+
+
+def _normalize_color_mapping(cat_color):
+    """Return a string-keyed label-to-color mapping with validated colors."""
+    color_by_label = {str(label): color for label, color in cat_color.items()}
+    invalid = {
+        label: color
+        for label, color in color_by_label.items()
+        if not is_color_like(color)
+    }
+    if invalid:
+        raise ValueError(f"cat_color contains invalid matplotlib colors: {invalid}.")
+    return color_by_label
+
+
+def _prepare_cat_figure_palette(input_adata, color_key, cat_color):
+    """Prepare categorical labels and palette for Scanpy plotting."""
+    if not isinstance(cat_color, Mapping):
+        input_adata.obs[color_key] = input_adata.obs[color_key].astype("category")
+        return cat_color
+
+    color_by_label = _normalize_color_mapping(cat_color)
+    labels = input_adata.obs[color_key].astype("string")
+    observed_labels = pd.Series(labels).dropna().unique().tolist()
+    missing_labels = [
+        label for label in observed_labels if label not in color_by_label
+    ]
+    if missing_labels:
+        raise ValueError(
+            "cat_color is missing colors for observed labels: "
+            f"{missing_labels}."
+        )
+
+    category_order = [
+        label for label in color_by_label
+        if label in set(observed_labels)
+    ]
+    input_adata.obs[color_key] = pd.Categorical(
+        labels,
+        categories=category_order,
+        ordered=True,
+    )
+    return [color_by_label[label] for label in category_order]
 
 
 def cat_figure(
@@ -95,10 +150,13 @@ def cat_figure(
         Column name in `input_adata.obs` used to color the scatter plot.
         This column will be converted to categorical type before plotting.
 
-    cat_color : list, tuple, or None
-        Categorical color palette used for plotting. Each category will be assigned
-        one color from this palette. If `None`, Scanpy will use its default
-        categorical color palette.
+    cat_color : list, tuple, dict, or None
+        Categorical color palette used for plotting. If a list or tuple is
+        provided, categories are colored in categorical order. If a dictionary
+        is provided, keys are category labels and values are matplotlib colors,
+        for example ``{"tumor": "#FD2B5C", "stroma": "#59BE86"}``. Missing
+        observed labels raise ``ValueError``. If ``None``, Scanpy uses its
+        default categorical color palette.
 
     size : float, default=50
         Marker size used in the scatter plot.
@@ -133,7 +191,7 @@ def cat_figure(
     fig_path = Path(fig_path)
     fig_path.parent.mkdir(parents=True, exist_ok=True)
 
-    input_adata.obs[color_key] = input_adata.obs[color_key].astype("category")
+    palette = _prepare_cat_figure_palette(input_adata, color_key, cat_color)
 
     fig = sc.pl.scatter(
         input_adata,
@@ -141,7 +199,7 @@ def cat_figure(
         x=x_key,
         y=y_key,
         color=color_key,
-        palette=cat_color,
+        palette=palette,
         show=False,
         size=size,
     )
@@ -277,5 +335,3 @@ def con_figure(
 
     plt.clf()
     plt.close(fig.figure)
-
-

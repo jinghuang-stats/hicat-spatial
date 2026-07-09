@@ -83,8 +83,11 @@ class PreprocessConfig:
         leaves the package-created raw folders empty.
     target_sum : float or None, default=10_000
         Per-observation molecular total. ``None`` skips total normalization.
+        To keep molecular values on their original scale, use
+        ``target_sum=None`` together with ``log1p=False``.
     log1p : bool, default=True
-        Apply ``log1p`` after total normalization.
+        Apply ``log1p`` after optional total normalization. Set to ``False``
+        to skip log transformation.
     uppercase_features : bool, default=True
         Uppercase and uniquify molecular feature names.
     protein_replace_zeros : bool, default=False
@@ -102,14 +105,22 @@ class PreprocessConfig:
         ``resolution``, ``contour_method``, ``n_neighbors``,
         ``histology_scale``, or ``max_pseudo_spots``.
     label_color_dict : mapping[str, tuple[int, int, int]] or None, default=None
-        Optional mapping of reference scribble label to RGB color. When None,
-        existing ``adata.obs[label_key]`` labels are retained and no masks are
-        extracted.
+        Optional mapping of reference scribble label to RGB color. When
+        provided, Stage 1 extracts labels from annotated reference images.
+        When ``None``, no scribble extraction is performed; at least one
+        reference molecular modality should already contain
+        ``adata.obs[label_key]`` for every reference section.
     scribble_kwargs : dict, default={}
         Additional arguments for ``extract_scribble_labels_pipeline``, such as
         ``color_tolerance``, ``selected_labels_dic``, or plotting settings.
+    image_feature_mode : {"extract", "load"}, default="extract"
+        How to create Image modality objects. ``"extract"`` runs UNI/HIPT from
+        raw H&E images. ``"load"`` reads pre-extracted image-feature ``.h5ad``
+        files from ``data_dir`` and saves them into the standard preprocessing
+        output folders.
     image_feature_kwargs : dict, default={}
-        Arguments for ``extract_image_features``, including ``model``,
+        Arguments for ``extract_image_features`` when
+        ``image_feature_mode="extract"``, including ``model``,
         ``checkpoint_path``, patch settings, clustering, and plot settings.
     x_key, y_key : str, default=("pixel_x", "pixel_y")
         Image-pixel coordinate columns in every molecular ``adata.obs``.
@@ -117,16 +128,30 @@ class PreprocessConfig:
         Array-grid coordinates used by scan-based contour candidates.
     label_key : str, default="label"
         Reference tissue-region annotation column.
-    reference_gene_template, query_gene_template : str
-        Flat-folder Gene input filename templates.
-    reference_protein_template, query_protein_template : str
-        Flat-folder Protein input filename templates.
+    reference_gene_template, query_gene_template : str or None
+        Flat-folder spot-level Gene input filename templates. Set to ``None``
+        to skip spot-level Gene loading when only enhanced Gene objects are
+        available.
+    reference_protein_template, query_protein_template : str or None
+        Flat-folder spot-level Protein input filename templates. Set to
+        ``None`` to skip spot-level Protein loading.
+    reference_enhanced_gene_template, query_enhanced_gene_template : str or None
+        Optional flat-folder precomputed enhanced Gene ``.h5ad`` templates.
+    reference_enhanced_protein_template, query_enhanced_protein_template : str or None
+        Optional flat-folder precomputed enhanced Protein ``.h5ad`` templates.
     reference_image_template, query_image_template : str
         Flat-folder raw H&E filename templates. ``{ext}``, if present, tries
         jpg, jpeg, png, tif, and tiff.
     reference_annotated_image_template : str
         Flat-folder reference annotated-H&E filename template used when
         ``label_color_dict`` is supplied.
+    reference_image_feature_template, query_image_feature_template : str
+        Flat-folder pre-extracted spot-level Image feature ``.h5ad`` templates
+        used when ``image_feature_mode="load"``.
+    reference_enhanced_image_feature_template, query_enhanced_image_feature_template : str or None
+        Optional flat-folder pre-extracted enhanced-grid Image feature
+        ``.h5ad`` templates used when ``image_feature_mode="load"``. Leave as
+        ``None`` to skip enhanced Image features.
     color_order : {"bgr", "rgb"}, default="bgr"
         H&E channel order supplied to enhancement. ``"bgr"`` matches OpenCV.
     """
@@ -148,19 +173,28 @@ class PreprocessConfig:
     enhancement_kwargs: Dict[str, Any] = field(default_factory=dict)
     label_color_dict: Optional[Mapping[str, Tuple[int, int, int]]] = None
     scribble_kwargs: Dict[str, Any] = field(default_factory=dict)
+    image_feature_mode: str = "extract"
     image_feature_kwargs: Dict[str, Any] = field(default_factory=dict)
     x_key: str = "pixel_x"
     y_key: str = "pixel_y"
     array_x_key: str = "array_x"
     array_y_key: str = "array_y"
     label_key: str = "label"
-    reference_gene_template: str = "{section}_ref_gene_raw.h5ad"
-    query_gene_template: str = "{section}_query_gene_raw.h5ad"
-    reference_protein_template: str = "{section}_ref_protein_raw.h5ad"
-    query_protein_template: str = "{section}_query_protein_raw.h5ad"
+    reference_gene_template: Optional[str] = "{section}_ref_gene_raw.h5ad"
+    query_gene_template: Optional[str] = "{section}_query_gene_raw.h5ad"
+    reference_protein_template: Optional[str] = "{section}_ref_protein_raw.h5ad"
+    query_protein_template: Optional[str] = "{section}_query_protein_raw.h5ad"
+    reference_enhanced_gene_template: Optional[str] = None
+    query_enhanced_gene_template: Optional[str] = None
+    reference_enhanced_protein_template: Optional[str] = None
+    query_enhanced_protein_template: Optional[str] = None
     reference_image_template: str = "{section}_image{ext}"
     query_image_template: str = "{section}_image{ext}"
     reference_annotated_image_template: str = "{section}_annotated_image{ext}"
+    reference_image_feature_template: str = "{section}_ref_image_features.h5ad"
+    query_image_feature_template: str = "{section}_query_image_features.h5ad"
+    reference_enhanced_image_feature_template: Optional[str] = None
+    query_enhanced_image_feature_template: Optional[str] = None
     color_order: str = "bgr"
 
 
@@ -239,6 +273,8 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
         raise FileNotFoundError(f"data_dir does not exist or is not a folder: {data_dir}")
     if config.raw_file_mode not in {"copy", "symlink", "none"}:
         raise ValueError("raw_file_mode must be 'copy', 'symlink', or 'none'.")
+    if str(config.image_feature_mode).lower() not in {"extract", "load"}:
+        raise ValueError("image_feature_mode must be 'extract' or 'load'.")
     if "Image" in modalities and not ({"Gene", "Protein"} & set(modalities)):
         raise ValueError(
             "Image preprocessing needs Gene or Protein AnnData to provide spot coordinates."
@@ -247,11 +283,27 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
         raise ValueError("gene_enhancement=True requires the Gene modality.")
     if config.protein_enhancement and "Protein" not in modalities:
         raise ValueError("protein_enhancement=True requires the Protein modality.")
-    templates = (
+    molecular_templates = (
         ("reference_gene_template", config.reference_gene_template),
         ("query_gene_template", config.query_gene_template),
         ("reference_protein_template", config.reference_protein_template),
         ("query_protein_template", config.query_protein_template),
+        (
+            "reference_enhanced_gene_template",
+            config.reference_enhanced_gene_template,
+        ),
+        ("query_enhanced_gene_template", config.query_enhanced_gene_template),
+        (
+            "reference_enhanced_protein_template",
+            config.reference_enhanced_protein_template,
+        ),
+        (
+            "query_enhanced_protein_template",
+            config.query_enhanced_protein_template,
+        ),
+    )
+    templates = (
+        *molecular_templates,
         ("reference_image_template", config.reference_image_template),
         ("query_image_template", config.query_image_template),
         (
@@ -260,7 +312,22 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
         ),
     )
     for template_name, template in templates:
-        if "{section}" not in template:
+        if template is not None and "{section}" not in template:
+            raise ValueError(f"{template_name} must contain '{{section}}'.")
+    image_feature_templates = (
+        ("reference_image_feature_template", config.reference_image_feature_template),
+        ("query_image_feature_template", config.query_image_feature_template),
+        (
+            "reference_enhanced_image_feature_template",
+            config.reference_enhanced_image_feature_template,
+        ),
+        (
+            "query_enhanced_image_feature_template",
+            config.query_enhanced_image_feature_template,
+        ),
+    )
+    for template_name, template in image_feature_templates:
+        if template is not None and "{section}" not in template:
             raise ValueError(f"{template_name} must contain '{{section}}'.")
     for template_name, template in (
         ("reference_image_template", config.reference_image_template),
@@ -278,6 +345,96 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
     ):
         if len(set(sections)) != len(sections):
             raise ValueError(f"{cohort_name}_sections contains duplicate IDs.")
+    if "Gene" in modalities:
+        if (
+            config.reference_gene_template is None
+            and config.reference_enhanced_gene_template is None
+        ):
+            raise ValueError(
+                "Gene modality requires reference_gene_template or "
+                "reference_enhanced_gene_template."
+            )
+        if (
+            config.query_gene_template is None
+            and config.query_enhanced_gene_template is None
+        ):
+            raise ValueError(
+                "Gene modality requires query_gene_template or "
+                "query_enhanced_gene_template."
+            )
+    if "Protein" in modalities:
+        if (
+            config.reference_protein_template is None
+            and config.reference_enhanced_protein_template is None
+        ):
+            raise ValueError(
+                "Protein modality requires reference_protein_template or "
+                "reference_enhanced_protein_template."
+            )
+        if (
+            config.query_protein_template is None
+            and config.query_enhanced_protein_template is None
+        ):
+            raise ValueError(
+                "Protein modality requires query_protein_template or "
+                "query_enhanced_protein_template."
+            )
+    if config.gene_enhancement and (
+        config.reference_gene_template is None or config.query_gene_template is None
+    ):
+        raise ValueError(
+            "gene_enhancement=True requires spot-level reference/query Gene templates."
+        )
+    if config.protein_enhancement and (
+        config.reference_protein_template is None
+        or config.query_protein_template is None
+    ):
+        raise ValueError(
+            "protein_enhancement=True requires spot-level reference/query Protein "
+            "templates."
+        )
+    if config.gene_enhancement and (
+        config.reference_enhanced_gene_template is not None
+        or config.query_enhanced_gene_template is not None
+    ):
+        raise ValueError(
+            "Use either gene_enhancement=True or precomputed enhanced Gene "
+            "templates, not both."
+        )
+    if config.protein_enhancement and (
+        config.reference_enhanced_protein_template is not None
+        or config.query_enhanced_protein_template is not None
+    ):
+        raise ValueError(
+            "Use either protein_enhancement=True or precomputed enhanced Protein "
+            "templates, not both."
+        )
+    if config.label_color_dict is not None and (
+        config.reference_gene_template is None
+        and config.reference_protein_template is None
+    ):
+        raise ValueError(
+            "label_color_dict requires at least one spot-level reference molecular "
+            "template because scribbles are assigned to observed spots."
+        )
+    if "Image" in modalities and str(config.image_feature_mode).lower() == "load":
+        for cohort_name, spot_template, enhanced_template in (
+            (
+                "reference",
+                config.reference_image_feature_template,
+                config.reference_enhanced_image_feature_template,
+            ),
+            (
+                "query",
+                config.query_image_feature_template,
+                config.query_enhanced_image_feature_template,
+            ),
+        ):
+            if spot_template is None and enhanced_template is None:
+                raise ValueError(
+                    f"Image load mode requires at least one {cohort_name} "
+                    "spot-level or enhanced image-feature template."
+                )
     return modalities
 
 
@@ -289,18 +446,29 @@ def _active_raw_dir(config, paths):
     return _data_dir(config) if config.raw_file_mode == "none" else paths.raw_dir
 
 
-def _molecular_template(config, cohort, modality):
+def _molecular_template(config, cohort, modality, level="spot"):
     cohort = str(cohort).lower()
     modality = str(modality).lower()
-    if cohort == "reference" and modality == "gene":
+    level = str(level).lower()
+    if cohort == "reference" and modality == "gene" and level == "spot":
         return config.reference_gene_template
-    if cohort == "query" and modality == "gene":
+    if cohort == "query" and modality == "gene" and level == "spot":
         return config.query_gene_template
-    if cohort == "reference" and modality == "protein":
+    if cohort == "reference" and modality == "protein" and level == "spot":
         return config.reference_protein_template
-    if cohort == "query" and modality == "protein":
+    if cohort == "query" and modality == "protein" and level == "spot":
         return config.query_protein_template
-    raise ValueError(f"Unsupported cohort/modality combination: {cohort}, {modality}")
+    if cohort == "reference" and modality == "gene" and level == "enhanced":
+        return config.reference_enhanced_gene_template
+    if cohort == "query" and modality == "gene" and level == "enhanced":
+        return config.query_enhanced_gene_template
+    if cohort == "reference" and modality == "protein" and level == "enhanced":
+        return config.reference_enhanced_protein_template
+    if cohort == "query" and modality == "protein" and level == "enhanced":
+        return config.query_enhanced_protein_template
+    raise ValueError(
+        f"Unsupported cohort/modality/level combination: {cohort}, {modality}, {level}"
+    )
 
 
 def _image_template(config, cohort, annotated=False):
@@ -316,28 +484,50 @@ def _image_template(config, cohort, annotated=False):
     raise ValueError(f"Unsupported cohort: {cohort}")
 
 
+def _image_feature_template(config, cohort, level="spot"):
+    cohort = str(cohort).lower()
+    level = str(level).lower()
+    if level == "spot":
+        if cohort == "reference":
+            return config.reference_image_feature_template
+        if cohort == "query":
+            return config.query_image_feature_template
+    elif level == "enhanced":
+        if cohort == "reference":
+            return config.reference_enhanced_image_feature_template
+        if cohort == "query":
+            return config.query_enhanced_image_feature_template
+    raise ValueError(f"Unsupported cohort/level combination: {cohort}, {level}")
+
+
 def _resolve_data_file(config, section, template):
     return resolve_section_file(_data_dir(config), section, template)
 
 
 def _iter_required_data_files(config, modalities, cohort, sections):
-    needs_images = (
-        "Image" in modalities or config.gene_enhancement or config.protein_enhancement
+    extracts_image_features = (
+        "Image" in modalities and str(config.image_feature_mode).lower() == "extract"
+    )
+    loads_image_features = (
+        "Image" in modalities and str(config.image_feature_mode).lower() == "load"
+    )
+    needs_raw_images = (
+        extracts_image_features or config.gene_enhancement or config.protein_enhancement
     )
     for section in sections:
         if "Gene" in modalities:
-            yield _resolve_data_file(
-                config,
-                section,
-                _molecular_template(config, cohort, "Gene"),
-            )
+            for level in ("spot", "enhanced"):
+                template = _molecular_template(config, cohort, "Gene", level=level)
+                if template is not None:
+                    yield _resolve_data_file(config, section, template)
         if "Protein" in modalities:
-            yield _resolve_data_file(
-                config,
-                section,
-                _molecular_template(config, cohort, "Protein"),
-            )
-        if needs_images or (cohort == "reference" and config.label_color_dict is not None):
+            for level in ("spot", "enhanced"):
+                template = _molecular_template(config, cohort, "Protein", level=level)
+                if template is not None:
+                    yield _resolve_data_file(config, section, template)
+        if needs_raw_images or (
+            cohort == "reference" and config.label_color_dict is not None
+        ):
             yield _resolve_data_file(
                 config,
                 section,
@@ -349,6 +539,17 @@ def _iter_required_data_files(config, modalities, cohort, sections):
                 section,
                 _image_template(config, cohort, annotated=True),
             )
+        if loads_image_features:
+            spot_template = _image_feature_template(config, cohort, level="spot")
+            if spot_template is not None:
+                yield _resolve_data_file(config, section, spot_template)
+            enhanced_template = _image_feature_template(
+                config,
+                cohort,
+                level="enhanced",
+            )
+            if enhanced_template is not None:
+                yield _resolve_data_file(config, section, enhanced_template)
 
 
 def _place_raw_file(source, raw_dir, mode):
@@ -408,23 +609,31 @@ def _load_molecular_cohort(config, paths, sections, modalities, cohort):
         copy=False,
     )
     if "Gene" in modalities:
-        result["spot"]["Gene"] = preprocess_molecular_sections(
-            sections,
-            raw_dir,
-            modality="Gene",
-            file_template=_molecular_template(config, cohort, "Gene"),
-            **common_kwargs,
-        )
+        for level in ("spot", "enhanced"):
+            template = _molecular_template(config, cohort, "Gene", level=level)
+            if template is None:
+                continue
+            result[level]["Gene"] = preprocess_molecular_sections(
+                sections,
+                raw_dir,
+                modality="Gene",
+                file_template=template,
+                **common_kwargs,
+            )
     if "Protein" in modalities:
-        result["spot"]["Protein"] = preprocess_molecular_sections(
-            sections,
-            raw_dir,
-            modality="Protein",
-            file_template=_molecular_template(config, cohort, "Protein"),
-            replace_zeros=config.protein_replace_zeros,
-            zero_replacement_scale=config.zero_replacement_scale,
-            **common_kwargs,
-        )
+        for level in ("spot", "enhanced"):
+            template = _molecular_template(config, cohort, "Protein", level=level)
+            if template is None:
+                continue
+            result[level]["Protein"] = preprocess_molecular_sections(
+                sections,
+                raw_dir,
+                modality="Protein",
+                file_template=template,
+                replace_zeros=config.protein_replace_zeros,
+                zero_replacement_scale=config.zero_replacement_scale,
+                **common_kwargs,
+            )
     return result
 
 
@@ -676,6 +885,85 @@ def _extract_image_cohort(config, result, paths, images, sections, modalities):
             )
 
 
+def _prepare_loaded_image_adata(image_adata, coordinates, config, section, level):
+    """Validate and standardize a pre-extracted image-feature AnnData object."""
+    if image_adata.n_obs != coordinates.n_obs:
+        raise ValueError(
+            f"Loaded {level} image features for section {section!r} contain "
+            f"{image_adata.n_obs} observations, but the molecular coordinate "
+            f"source contains {coordinates.n_obs} observations."
+        )
+
+    if image_adata.obs_names.is_unique and coordinates.obs_names.is_unique:
+        missing_obs = coordinates.obs_names.difference(image_adata.obs_names)
+        if len(missing_obs) > 0:
+            preview = list(missing_obs[:5])
+            raise ValueError(
+                f"Loaded {level} image features for section {section!r} are "
+                f"missing molecular observation IDs, for example {preview}."
+            )
+        if not image_adata.obs_names.equals(coordinates.obs_names):
+            image_adata = image_adata[coordinates.obs_names].copy()
+
+    for coordinate_key in (config.x_key, config.y_key):
+        if coordinate_key not in image_adata.obs and coordinate_key in coordinates.obs:
+            image_adata.obs[coordinate_key] = coordinates.obs[coordinate_key].to_numpy()
+
+    if "image" not in image_adata.var:
+        image_adata.var["image"] = image_adata.var_names.astype(str)
+    image_adata = remove_obs_columns_by_prefix(
+        image_adata,
+        prefixes="kmeans_",
+        copy=False,
+    )
+    return image_adata
+
+
+def _load_image_cohort(config, result, paths, sections, cohort, modalities):
+    if "Image" not in modalities:
+        return
+
+    raw_dir = _active_raw_dir(config, paths)
+    for level in ("spot", "enhanced"):
+        template = _image_feature_template(config, cohort, level=level)
+        if template is None:
+            continue
+        for section in sections:
+            try:
+                coordinates = _preferred_coordinate_source(result, section, level=level)
+            except KeyError:
+                continue
+            image_path = resolve_section_file(
+                raw_dir,
+                section,
+                template,
+                extensions=(".h5ad",),
+            )
+            image_adata = ad.read_h5ad(image_path)
+            image_adata = _prepare_loaded_image_adata(
+                image_adata,
+                coordinates,
+                config,
+                section,
+                level,
+            )
+            result[level]["Image"][section] = image_adata
+            suffix = "" if level == "spot" else "enhanced_"
+            image_adata.write_h5ad(
+                paths.preprocessed_dir / f"{section}_{suffix}image.h5ad"
+            )
+
+
+def _process_image_cohort(config, result, paths, images, sections, cohort, modalities):
+    image_feature_mode = str(config.image_feature_mode).lower()
+    if image_feature_mode == "extract":
+        _extract_image_cohort(config, result, paths, images, sections, modalities)
+    elif image_feature_mode == "load":
+        _load_image_cohort(config, result, paths, sections, cohort, modalities)
+    else:
+        raise ValueError("image_feature_mode must be 'extract' or 'load'.")
+
+
 @logged_stage(
     "preprocessing",
     stage_output_from_config(
@@ -695,18 +983,29 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
     3. Optionally extract reference scribble annotations and propagate labels.
     4. Optionally detect contours and generate enhanced molecular pseudo spots.
     5. Save molecular objects and coordinate CSV files.
-    6. Optionally extract observed/enhanced UNI or HIPT image features, retain
-       KMeans QC plots, and save clean final image AnnData objects.
+    6. Optionally extract observed/enhanced UNI or HIPT image features, or load
+       pre-extracted image-feature ``.h5ad`` files, and save clean final Image
+       AnnData objects.
 
     Required raw inputs
     -------------------
     For every listed section, place the selected files in ``data_dir``:
 
-    - ``{section}_ref_gene_raw.h5ad`` for reference Gene;
-    - ``{section}_query_gene_raw.h5ad`` for query Gene;
-    - ``{section}_ref_protein_raw.h5ad`` for reference Protein;
-    - ``{section}_query_protein_raw.h5ad`` for query Protein;
-    - an H&E matching the cohort image template for Image or enhancement;
+    - ``{section}_ref_gene_raw.h5ad`` for spot-level reference Gene unless
+      ``reference_gene_template=None``;
+    - ``{section}_query_gene_raw.h5ad`` for spot-level query Gene unless
+      ``query_gene_template=None``;
+    - ``{section}_ref_protein_raw.h5ad`` for spot-level reference Protein unless
+      ``reference_protein_template=None``;
+    - ``{section}_query_protein_raw.h5ad`` for spot-level query Protein unless
+      ``query_protein_template=None``;
+    - optional precomputed enhanced Gene/Protein ``.h5ad`` files matching the
+      enhanced molecular templates when supplied;
+    - an H&E matching the cohort image template when Image features are
+      extracted from raw H&E or molecular enhancement is enabled;
+    - pre-extracted Image feature ``.h5ad`` files matching
+      ``reference_image_feature_template`` and ``query_image_feature_template``
+      when ``image_feature_mode="load"``;
     - a reference annotated H&E matching ``reference_annotated_image_template`` when
       ``label_color_dict`` is supplied.
 
@@ -751,8 +1050,11 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
         config, paths["query"], config.query_sections, modalities, "query"
     )
 
-    needs_images = (
-        "Image" in modalities or config.gene_enhancement or config.protein_enhancement
+    extracts_image_features = (
+        "Image" in modalities and str(config.image_feature_mode).lower() == "extract"
+    )
+    needs_raw_images = (
+        extracts_image_features or config.gene_enhancement or config.protein_enhancement
     )
     reference_images = (
         _resolved_images(
@@ -761,7 +1063,7 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
             config.reference_sections,
             cohort="reference",
         )
-        if needs_images or config.label_color_dict is not None
+        if needs_raw_images or config.label_color_dict is not None
         else {}
     )
     query_images = (
@@ -771,7 +1073,7 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
             config.query_sections,
             cohort="query",
         )
-        if needs_images
+        if needs_raw_images
         else {}
     )
 
@@ -809,21 +1111,23 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
     _save_molecular_outputs(reference, paths["reference"], config.reference_sections)
     _save_molecular_outputs(query, paths["query"], config.query_sections)
 
-    # Step 6: optionally create spot/enhanced image-feature objects.
-    _extract_image_cohort(
+    # Step 6: optionally create or load spot/enhanced image-feature objects.
+    _process_image_cohort(
         config,
         reference,
         paths["reference"],
         reference_images,
         config.reference_sections,
+        "reference",
         modalities,
     )
-    _extract_image_cohort(
+    _process_image_cohort(
         config,
         query,
         paths["query"],
         query_images,
         config.query_sections,
+        "query",
         modalities,
     )
 
