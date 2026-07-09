@@ -211,8 +211,65 @@ def run_tree_inference_stage(
     return result
 
 
+def rerun_tree_inference_with_weights(
+    tree_result: Mapping[str, Any],
+    weights: Mapping[str, float],
+    output_dir: Path | str | None = None,
+    show_tree: bool = False,
+):
+    """Infer a new Stage-2 tree from cached component distances and new weights.
+
+    Parameters
+    ----------
+    tree_result : mapping
+        Result returned by :func:`run_tree_inference_stage` with the current
+        package version. It must contain ``sample_component_dists_dic`` and
+        ``metadata["spot_counts"]``.
+    weights : mapping[str, float]
+        New modality weights with keys ``w_G``, ``w_I``, and ``w_S``.
+    output_dir : path-like or None, default=None
+        Optional output directory for the reweighted tree result. When
+        provided, this function saves ``tree_inference_result.pkl``,
+        ``stage_config.json``, distance matrices, split table, and tree files.
+    show_tree : bool, default=False
+        Display the inferred tree interactively.
+
+    Returns
+    -------
+    dict[str, Any]
+        New tree-inference result using the same selected features and cached
+        component distances, but the supplied weights.
+    """
+    from ..tree_inference import reweight_tree_inference_result
+
+    resolved_output_dir = ensure_output_dir(output_dir) if output_dir is not None else None
+    result = reweight_tree_inference_result(
+        previous_result=tree_result,
+        weights=weights,
+        output_dir=resolved_output_dir,
+        show_tree=show_tree,
+        return_results=True,
+    )
+
+    if resolved_output_dir is not None:
+        save_stage_result(result, resolved_output_dir / "tree_inference_result.pkl")
+        metadata = dict(tree_result.get("metadata", {}))
+        save_json(
+            {
+                "output_dir": str(resolved_output_dir),
+                "weights": dict(weights),
+                "source": "precomputed_tree_component_distances",
+                "previous_weights": metadata.get("weights"),
+            },
+            resolved_output_dir / "stage_config.json",
+        )
+
+    return result
+
+
 __all__ = [
     "TreeInferenceStageConfig",
     "construct_tree_reference_adata",
     "run_tree_inference_stage",
+    "rerun_tree_inference_with_weights",
 ]

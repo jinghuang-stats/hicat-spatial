@@ -147,7 +147,14 @@ def rank_genes_groups(
     # --------------------------
     # Run differential expression
     # --------------------------
-    sc.tl.rank_genes_groups(adata, groupby=group_key, reference="rest", n_genes=adata.shape[1], method='wilcoxon')
+    sc.tl.rank_genes_groups(
+        adata,
+        groupby=group_key,
+        reference="rest",
+        n_genes=adata.shape[1],
+        method="wilcoxon",
+        use_raw=False,
+    )
 
     def _build_result_df(group):
         """
@@ -201,9 +208,13 @@ def rank_genes_groups(
         in_fraction = fraction_expr.loc[in_group]
         out_fraction = fraction_expr.loc[out_group]
 
-        # log1p transformation
+        # Fold change on the same scale used by the original HiCAT workflow.
+        # When X is already log-transformed, compare mean log expression by
+        # exp(mean_log_in - mean_log_out).  Using expm1(mean_log_in) /
+        # expm1(mean_log_out) over-emphasizes rare genes with near-zero
+        # expression in the comparison group.
         if logged:
-            fold_change = np.expm1(in_mean.values) / (np.expm1(out_mean.values) + 1e-9)
+            fold_change = np.exp(in_mean.values - out_mean.values)
         else:
             fold_change = in_mean.values / (out_mean.values + 1e-9)
 
@@ -928,4 +939,3 @@ def get_valid_label_mask(
         )
 
     return valid_mask
-

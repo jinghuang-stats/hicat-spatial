@@ -11,10 +11,17 @@ from scipy.spatial.distance import pdist, squareform
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # Local package imports
 from .utils import get_region_genes
+
+
+_COMPONENT_WEIGHT_KEYS = {
+    "gene": "w_G",
+    "image": "w_I",
+    "spatial": "w_S",
+}
 
 # Pipeline:
 # read in reference_adata_dic 
@@ -953,15 +960,18 @@ def multi_modal_distance(
     x_key="x", 
     y_key="y", 
     label_key="label", 
-    scale=True):
+    scale=True,
+    return_component_dists=False,
+):
     weighted_dists_list = []
+    component_dists = {}
 
     # -----------------------------
     # Gene expression distances
     # -----------------------------
-    if w_G > 0:
-        gene_list = features_dic.get("gene", [])
-
+    gene_list = features_dic.get("gene", [])
+    compute_gene = w_G > 0 or (return_component_dists and len(gene_list) > 0)
+    if compute_gene:
         if len(gene_list) == 0:
             raise ValueError("w_G > 0, but features_dic['gene'] is missing or empty.")
 
@@ -981,13 +991,16 @@ def multi_modal_distance(
         else:
             weighted_dists_gene = gene_distance_result
 
-        weighted_dists_list.append((w_G, weighted_dists_gene))
+        component_dists["gene"] = weighted_dists_gene
+        if w_G != 0:
+            weighted_dists_list.append((w_G, weighted_dists_gene))
 
     # -----------------------------
     # Image feature distances
     # -----------------------------
-    if w_I > 0:
-        image_list = features_dic.get("image", [])
+    image_list = features_dic.get("image", [])
+    compute_image = w_I > 0 or (return_component_dists and len(image_list) > 0)
+    if compute_image:
 
         if len(image_list) == 0:
             raise ValueError("w_I > 0, but features_dic['image'] is missing or empty.")
@@ -1008,12 +1021,18 @@ def multi_modal_distance(
         else:
             weighted_dists_img = image_distance_result
 
-        weighted_dists_list.append((w_I, weighted_dists_img))
+        component_dists["image"] = weighted_dists_img
+        if w_I != 0:
+            weighted_dists_list.append((w_I, weighted_dists_img))
 
     # -----------------------------
     # Spatial neighborhood composition distances
     # -----------------------------
-    if w_S > 0:
+    has_spatial_inputs = all(
+        col in input_adata.obs.columns for col in (x_key, y_key, label_key)
+    )
+    compute_spatial = w_S > 0 or (return_component_dists and has_spatial_inputs)
+    if compute_spatial:
         if neighbors is None:
             if shape == "hexagon":
                 neighbors = 6
@@ -1050,7 +1069,9 @@ def multi_modal_distance(
         else:
             weighted_dists_spa = spatial_distance_result
 
-        weighted_dists_list.append((w_S, weighted_dists_spa))
+        component_dists["spatial"] = weighted_dists_spa
+        if w_S != 0:
+            weighted_dists_list.append((w_S, weighted_dists_spa))
 
     # -----------------------------
     # Check at least one modality is used
@@ -1084,6 +1105,9 @@ def multi_modal_distance(
     print("================================ Rank based on overall distance ================================")
 
     scaled_dists_ranks = rank_dists(scaled_dists_all)
+
+    if return_component_dists:
+        return scaled_dists_all, scaled_dists_ranks, component_dists
 
     return scaled_dists_all, scaled_dists_ranks
 
@@ -1220,6 +1244,7 @@ def multi_sample_distance(
     label_key="label",
     scale=True,
     return_sample_dists=True,
+    return_component_dists=False,
 ):
     """
     Compute and integrate region-level distances across multiple samples.
@@ -1289,6 +1314,7 @@ def multi_sample_distance(
 
     sample_dists_dic = {}
     sample_rank_dic = {}
+    sample_component_dists_dic = {}
     spot_counts = {}
 
     for sample_name, adata in ref_adata_dic.items():
@@ -1302,7 +1328,7 @@ def multi_sample_distance(
         else:
             current_features_dic = features_dic
 
-        sample_dists, sample_ranks = multi_modal_distance(
+        distance_result = multi_modal_distance(
             input_adata=adata,
             features_dic=current_features_dic,
             w_G=w_G,
@@ -1314,7 +1340,13 @@ def multi_sample_distance(
             y_key=y_key,
             label_key=label_key,
             scale=scale,
+            return_component_dists=return_component_dists,
         )
+        if return_component_dists:
+            sample_dists, sample_ranks, component_dists = distance_result
+            sample_component_dists_dic[sample_name] = component_dists
+        else:
+            sample_dists, sample_ranks = distance_result
 
         sample_dists_dic[sample_name] = sample_dists
         sample_rank_dic[sample_name] = sample_ranks
@@ -1330,8 +1362,14 @@ def multi_sample_distance(
 
     integrated_ranks = rank_dists(integrated_dists)
 
+    if return_sample_dists and return_component_dists:
+        return integrated_dists, integrated_ranks, sample_dists_dic, sample_component_dists_dic
+
     if return_sample_dists:
         return integrated_dists, integrated_ranks, sample_dists_dic
+
+    if return_component_dists:
+        return integrated_dists, integrated_ranks, sample_component_dists_dic
 
     return integrated_dists, integrated_ranks
 
@@ -1668,6 +1706,7 @@ def save_tree_inference_results(
     sample_dists_dic: dict,
     split_df: pd.DataFrame,
     metadata: dict,
+    sample_component_dists_dic: Optional[dict] = None,
 ) -> None:
     """
     Save all tree inference outputs for one parameter configuration.
@@ -1685,6 +1724,10 @@ def save_tree_inference_results(
             ├── H1_multi_modal_dists.csv
             ├── G2_multi_modal_dists.csv
             └── E1_multi_modal_dists.csv
+        └── sample_component_dists/
+            ├── H1_gene_dists.csv
+            ├── H1_image_dists.csv
+            └── H1_spatial_dists.csv
     """
 
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -1703,6 +1746,15 @@ def save_tree_inference_results(
     for sample_name, sample_dists in sample_dists_dic.items():
         sample_dists.to_csv(sample_dist_dir / f"{sample_name}_multi_modal_dists.csv")
 
+    if sample_component_dists_dic is not None:
+        component_dist_dir = config_dir / "sample_component_dists"
+        component_dist_dir.mkdir(parents=True, exist_ok=True)
+        for sample_name, component_dic in sample_component_dists_dic.items():
+            for component_name, component_dists in component_dic.items():
+                component_dists.to_csv(
+                    component_dist_dir / f"{sample_name}_{component_name}_dists.csv"
+                )
+
     # Save readable tree structure
     tree.save_txt(config_dir / "tree_structure.txt")
     tree.save_png(config_dir / "tree_structure.png")
@@ -1714,6 +1766,158 @@ def save_tree_inference_results(
     # Save metadata for reproducibility
     with open(config_dir / "metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
+
+
+def _validate_reweighting_weights(weights: Mapping[str, float]) -> Dict[str, float]:
+    """Validate and normalize tree-inference modality weights."""
+    if weights is None:
+        raise ValueError("weights must be supplied when reusing precomputed distances.")
+
+    unknown = set(weights) - set(_COMPONENT_WEIGHT_KEYS.values())
+    if unknown:
+        raise ValueError(
+            "weights can only contain 'w_G', 'w_I', and 'w_S'. "
+            f"Unsupported keys: {sorted(unknown)}."
+        )
+
+    normalized = {key: float(weights.get(key, 0.0)) for key in _COMPONENT_WEIGHT_KEYS.values()}
+    negative = {key: value for key, value in normalized.items() if value < 0}
+    if negative:
+        raise ValueError(f"Tree-inference weights must be non-negative: {negative}.")
+    if all(value == 0 for value in normalized.values()):
+        raise ValueError("At least one of w_G, w_I, or w_S must be greater than 0.")
+    return normalized
+
+
+def _reweight_sample_component_distances(
+    sample_component_dists_dic: Mapping[str, Mapping[str, pd.DataFrame]],
+    weights: Mapping[str, float],
+) -> Dict[str, pd.DataFrame]:
+    """Build sample-level multi-modal distances from cached component distances."""
+    weights = _validate_reweighting_weights(weights)
+    sample_dists_dic = {}
+
+    for sample_name, component_dic in sample_component_dists_dic.items():
+        weighted_dists = []
+        for component_name, weight_key in _COMPONENT_WEIGHT_KEYS.items():
+            weight = weights[weight_key]
+            if weight == 0:
+                continue
+            if component_name not in component_dic:
+                raise ValueError(
+                    f"Cannot use {weight_key}={weight} for sample {sample_name!r}: "
+                    f"cached {component_name!r} component distances are not available. "
+                    "Rerun Stage 2 once with the updated package and with the "
+                    "corresponding modality available."
+                )
+            weighted_dists.append((component_name, weight * component_dic[component_name]))
+
+        if not weighted_dists:
+            raise ValueError(f"No nonzero weighted components are available for {sample_name!r}.")
+
+        base = weighted_dists[0][1]
+        for component_name, dists in weighted_dists[1:]:
+            if not dists.index.equals(base.index) or not dists.columns.equals(base.columns):
+                raise ValueError(
+                    f"Cached component distance matrix {component_name!r} for sample "
+                    f"{sample_name!r} has inconsistent row/column labels."
+                )
+
+        combined = weighted_dists[0][1].copy()
+        for _, dists in weighted_dists[1:]:
+            combined = combined + dists
+        sample_dists_dic[sample_name] = combined
+
+    return sample_dists_dic
+
+
+def reweight_tree_inference_result(
+    previous_result: Mapping[str, Any],
+    weights: Mapping[str, float],
+    output_dir=None,
+    show_tree: bool = False,
+    return_results: bool = True,
+):
+    """Infer a new tree from cached Stage-2 component distances and new weights.
+
+    This avoids rerunning feature selection and modality-specific distance
+    calculations. ``previous_result`` must be produced by
+    :func:`infer_hier_tree_pipeline` or ``run_tree_inference_stage`` after
+    component-distance caching was added.
+    """
+    if "sample_component_dists_dic" not in previous_result:
+        raise KeyError(
+            "previous_result does not contain 'sample_component_dists_dic'. "
+            "Rerun Stage 2 once with the current HiCAT version to cache "
+            "gene/image/spatial component distances, then reweight from that result."
+        )
+
+    metadata = dict(previous_result.get("metadata", {}))
+    spot_counts = metadata.get("spot_counts")
+    if spot_counts is None:
+        raise KeyError(
+            "previous_result['metadata'] does not contain 'spot_counts'. "
+            "Rerun Stage 2 once with the current HiCAT version before reweighting."
+        )
+    spot_counts = {sample: float(count) for sample, count in spot_counts.items()}
+
+    weights = _validate_reweighting_weights(weights)
+    sample_component_dists_dic = previous_result["sample_component_dists_dic"]
+    sample_dists_dic = _reweight_sample_component_distances(
+        sample_component_dists_dic=sample_component_dists_dic,
+        weights=weights,
+    )
+
+    integrated_dists = integrate_distance_matrices(
+        dists_dic=sample_dists_dic,
+        spot_counts=spot_counts,
+        fill_diagonal=True,
+    )
+    integrated_ranks = rank_dists(integrated_dists)
+    tree = build_hier_tree(rank_matrix=integrated_ranks, show=show_tree)
+    split_df = make_split_table(tree)
+
+    previous_weights = metadata.get("weights")
+    metadata.update(
+        {
+            "weights": weights,
+            "previous_weights": previous_weights,
+            "reweighted_from_precomputed_components": True,
+            "root_node": tree.root_node,
+            "region_names": tree.region_names,
+        }
+    )
+
+    if output_dir is not None:
+        save_tree_inference_results(
+            config_dir=Path(output_dir),
+            tree=tree,
+            integrated_dists=integrated_dists,
+            integrated_ranks=integrated_ranks,
+            sample_dists_dic=sample_dists_dic,
+            sample_component_dists_dic=sample_component_dists_dic,
+            split_df=split_df,
+            metadata=metadata,
+        )
+
+    result = {
+        "tree": tree,
+        "integrated_dists": integrated_dists,
+        "integrated_ranks": integrated_ranks,
+        "sample_dists_dic": sample_dists_dic,
+        "sample_component_dists_dic": sample_component_dists_dic,
+        "split_df": split_df,
+        "features_dic": previous_result.get("features_dic"),
+        "region_genes_dic": previous_result.get("region_genes_dic"),
+        "region_image_dic": previous_result.get("region_image_dic"),
+        "selected_gene_dic": previous_result.get("selected_gene_dic"),
+        "selected_image_dic": previous_result.get("selected_image_dic"),
+        "metadata": metadata,
+    }
+
+    if return_results:
+        return result
+    return tree
 
 
 def get_first_hierarchy_split_from_tree(hier_tree):
@@ -2014,7 +2218,12 @@ def infer_hier_tree_pipeline(
         print("Step 2. Computing multi-modal and multi-sample distances")
         print("============================================================")
 
-    integrated_dists, integrated_ranks, sample_dists_dic = multi_sample_distance(
+    (
+        integrated_dists,
+        integrated_ranks,
+        sample_dists_dic,
+        sample_component_dists_dic,
+    ) = multi_sample_distance(
         ref_adata_dic=ref_adata_dic,
         features_dic=features_dic,
         w_G=weights["w_G"],
@@ -2027,6 +2236,7 @@ def infer_hier_tree_pipeline(
         label_key=label_key,
         scale=scale,
         return_sample_dists=True,
+        return_component_dists=True,
     )
 
     # ============================================================
@@ -2060,6 +2270,10 @@ def infer_hier_tree_pipeline(
         "scale": scale,
         "gene_filtering_paras": gene_filtering_paras,
         "image_filtering_paras": image_filtering_paras,
+        "spot_counts": {
+            sample_name: int(ref_adata_dic[sample_name].shape[0])
+            for sample_name in ref_adata_dic
+        },
         "n_gene_features": {
             sample_name: len(features_dic[sample_name]["gene"])
             for sample_name in features_dic
@@ -2084,6 +2298,7 @@ def infer_hier_tree_pipeline(
             integrated_dists=integrated_dists,
             integrated_ranks=integrated_ranks,
             sample_dists_dic=sample_dists_dic,
+            sample_component_dists_dic=sample_component_dists_dic,
             split_df=split_df,
             metadata=metadata,
         )
@@ -2096,6 +2311,7 @@ def infer_hier_tree_pipeline(
         "integrated_dists": integrated_dists,
         "integrated_ranks": integrated_ranks,
         "sample_dists_dic": sample_dists_dic,
+        "sample_component_dists_dic": sample_component_dists_dic,
         "split_df": split_df,
         "features_dic": features_dic,
         "region_genes_dic": region_genes_dic,

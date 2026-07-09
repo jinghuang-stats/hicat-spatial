@@ -31,6 +31,10 @@ _EXPORTS = {
         ".step2_tree_inference",
         "run_tree_inference_stage",
     ),
+    "rerun_tree_inference_with_weights": (
+        ".step2_tree_inference",
+        "rerun_tree_inference_with_weights",
+    ),
     "ReferenceSelectionStageConfig": (
         ".step3_reference_selection",
         "ReferenceSelectionStageConfig",
