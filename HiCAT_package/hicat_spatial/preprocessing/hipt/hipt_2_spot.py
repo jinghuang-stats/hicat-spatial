@@ -26,6 +26,10 @@ def _combine_hipt_embedding_grids(embedding_obj: dict) -> tuple[np.ndarray, list
 
     The usual HIPT keys are ``"cls"``, ``"sub"``, and ``"rgb"``. Any additional
     keys are appended after these preferred keys.
+
+    HIPT stores each channel in image-array order ``(feature, row_y, col_x)``.
+    The shared spot aggregator expects ``(feature, x, y)``, so this function
+    transposes the two spatial axes before returning the combined grid.
     """
     if not isinstance(embedding_obj, dict) or len(embedding_obj) == 0:
         raise ValueError("HIPT embedding object must be a non-empty dictionary.")
@@ -43,17 +47,19 @@ def _combine_hipt_embedding_grids(embedding_obj: dict) -> tuple[np.ndarray, list
         if grid.ndim != 3:
             raise ValueError(
                 f"HIPT embedding for key '{key}' must have shape "
-                f"(n_features, n_x, n_y), got {grid.shape}."
+                f"(n_features, n_y, n_x), got {grid.shape}."
             )
 
+        raw_spatial_shape = grid.shape[1:]
         if expected_shape is None:
-            expected_shape = grid.shape[1:]
-        elif grid.shape[1:] != expected_shape:
+            expected_shape = raw_spatial_shape
+        elif raw_spatial_shape != expected_shape:
             raise ValueError(
                 "All HIPT embedding grids must have the same spatial shape. "
-                f"Expected {expected_shape}, got {grid.shape[1:]} for key '{key}'."
+                f"Expected {expected_shape}, got {raw_spatial_shape} for key '{key}'."
             )
 
+        grid = np.swapaxes(grid, 1, 2)
         grids.append(grid)
         feature_names.extend([f"{key}_{i}" for i in range(grid.shape[0])])
 

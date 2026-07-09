@@ -21,10 +21,15 @@ Typical use
         raw_file_mode="copy",
         gene_enhancement=True,
         label_color_dict={"tumor": (255, 0, 0), "stroma": (0, 255, 0)},
+        image_feature_levels=("spot", "enhanced"),
         image_feature_kwargs={
             "model": "uni",
             "checkpoint_path": "./checkpoints/pytorch_model.bin",
             "n_clusters": (5, 10, 15),
+        },
+        image_feature_level_kwargs={
+            "spot": {"patch_size_spot": 250},
+            "enhanced": {"patch_size_spot": 50},
         },
     )
     result = run_preprocessing_pipeline(config)
@@ -56,6 +61,60 @@ from ._io import logged_stage, save_json, save_stage_result, stage_output_from_c
 
 
 _MODALITY_ORDER = ("Gene", "Image", "Protein")
+_IMAGE_FEATURE_LEVELS = ("spot", "enhanced")
+_IMAGE_FEATURE_AGGREGATION_OVERRIDE_KEYS = {
+    "patch_size_spot",
+    "aggregation_method",
+    "normalize_by",
+    "ignore_zero_features",
+    "zero_tol",
+    "npcs",
+    "n_clusters",
+    "ncluster_list",
+    "plot_clusters",
+    "plot_spot_size",
+    "cat_color",
+    "dpi",
+    "invert_x",
+    "invert_y",
+    "random_state",
+    "save_h5ad",
+    "spatial_key",
+    "spatial_coords_are_pixel",
+}
+_IMAGE_FEATURE_MODEL_SPECIFIC_KEYS = {
+    "mask",
+    "pad_size",
+    "reduction_method",
+    "n_components",
+    "smoothen_method",
+    "random_weights",
+    "no_shift",
+    "use_cache",
+    "scale_value",
+    "pad_value",
+    "mask_save_dir",
+    "density_thresh",
+    "clean_background_flag",
+    "min_size",
+    "batch_size",
+    "stride",
+    "num_workers",
+    "spatial_key",
+    "spatial_coords_are_pixel",
+}
+_IMAGE_FEATURE_WORKSPACE_KEYS = {
+    "model",
+    "checkpoint_path",
+    "patch_size_emb",
+    "device",
+    "raw_image_name",
+    "overwrite_raw_image",
+} | _IMAGE_FEATURE_MODEL_SPECIFIC_KEYS
+_IMAGE_FEATURE_AGGREGATION_KEYS = {
+    "patch_size_spot",
+    "patch_size_emb",
+} | _IMAGE_FEATURE_AGGREGATION_OVERRIDE_KEYS | _IMAGE_FEATURE_MODEL_SPECIFIC_KEYS
 
 
 @dataclass
@@ -124,6 +183,15 @@ class PreprocessConfig:
         Arguments for ``extract_image_features`` when
         ``image_feature_mode="extract"``, including ``model``,
         ``checkpoint_path``, patch settings, clustering, and plot settings.
+    image_feature_levels : {"auto", "spot", "enhanced"} or sequence[str], default="auto"
+        Final Image feature levels to create when ``image_feature_mode="extract"``.
+        ``"auto"`` creates enhanced Image features when molecular enhancement
+        is enabled and enhanced coordinates are available; otherwise it creates
+        spot-level Image features. Use ``("spot", "enhanced")`` to save both.
+    image_feature_level_kwargs : dict, default={}
+        Per-level aggregation overrides used after the shared HIPT/UNI
+        embedding grid is extracted once. For example,
+        ``{"spot": {"patch_size_spot": 250}, "enhanced": {"patch_size_spot": 50}}``.
     x_key, y_key : str, default=("pixel_x", "pixel_y")
         Image-pixel coordinate columns in every molecular ``adata.obs``.
         ``x_key`` should be the horizontal image coordinate (column, bounded
@@ -181,6 +249,8 @@ class PreprocessConfig:
     scribble_kwargs: Dict[str, Any] = field(default_factory=dict)
     image_feature_mode: str = "extract"
     image_feature_kwargs: Dict[str, Any] = field(default_factory=dict)
+    image_feature_levels: str | Sequence[str] = "auto"
+    image_feature_level_kwargs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     x_key: str = "pixel_x"
     y_key: str = "pixel_y"
     array_x_key: str = "array_x"
@@ -270,6 +340,128 @@ def _canonical_modalities(modalities: Sequence[str]) -> Tuple[str, ...]:
     return tuple(name for name in _MODALITY_ORDER if name.lower() in requested)
 
 
+def _normalize_image_feature_levels(levels) -> Tuple[str, ...] | None:
+    """Return explicit image-feature levels, or None for auto mode."""
+    if isinstance(levels, str):
+        value = levels.strip().lower()
+        if value == "auto":
+            return None
+        requested = (value,)
+    else:
+        requested = tuple(str(level).strip().lower() for level in levels)
+
+    if not requested:
+        raise ValueError("image_feature_levels must not be empty.")
+
+    unknown = set(requested) - set(_IMAGE_FEATURE_LEVELS)
+    if unknown:
+        raise ValueError(
+            "image_feature_levels must be 'auto', 'spot', 'enhanced', or a "
+            f"sequence containing those levels. Unsupported: {sorted(unknown)}."
+        )
+
+    ordered = tuple(level for level in _IMAGE_FEATURE_LEVELS if level in requested)
+    return ordered
+
+
+def _validate_image_feature_level_kwargs(config: PreprocessConfig) -> None:
+    if not isinstance(config.image_feature_level_kwargs, Mapping):
+        raise TypeError("image_feature_level_kwargs must be a mapping.")
+
+    for level, kwargs in config.image_feature_level_kwargs.items():
+        normalized = str(level).strip().lower()
+        if normalized not in _IMAGE_FEATURE_LEVELS:
+            raise ValueError(
+                "image_feature_level_kwargs keys must be 'spot' or 'enhanced'. "
+                f"Unsupported: {level!r}."
+            )
+        if not isinstance(kwargs, Mapping):
+            raise TypeError(
+                f"image_feature_level_kwargs[{level!r}] must be a mapping."
+            )
+        invalid = set(kwargs) - _IMAGE_FEATURE_AGGREGATION_OVERRIDE_KEYS
+        if invalid:
+            raise ValueError(
+                f"Invalid per-level image feature option(s) for {level!r}: "
+                f"{sorted(invalid)}. Per-level overrides are only for aggregation "
+                "and plotting options such as patch_size_spot, normalize_by, "
+                "n_clusters, or plot_clusters. Put model/checkpoint/preprocessing "
+                "options in image_feature_kwargs."
+            )
+
+
+def _validate_image_feature_kwargs(config: PreprocessConfig) -> None:
+    if not isinstance(config.image_feature_kwargs, Mapping):
+        raise TypeError("image_feature_kwargs must be a mapping.")
+
+    allowed = _IMAGE_FEATURE_WORKSPACE_KEYS | _IMAGE_FEATURE_AGGREGATION_KEYS
+    invalid = set(config.image_feature_kwargs) - allowed
+    if invalid:
+        raise ValueError(
+            "Invalid image_feature_kwargs option(s): "
+            f"{sorted(invalid)}. Stage 1 manages image_path, spot_coordinates, "
+            "output_dir, sample_name, spot_x_key, and spot_y_key directly."
+        )
+
+
+def _has_coordinate_source(result, section, level) -> bool:
+    try:
+        _preferred_coordinate_source(result, section, level=level)
+    except KeyError:
+        return False
+    return True
+
+
+def _resolved_image_feature_levels(config, result, section) -> Tuple[str, ...]:
+    explicit = _normalize_image_feature_levels(config.image_feature_levels)
+    if explicit is not None:
+        for level in explicit:
+            if not _has_coordinate_source(result, section, level):
+                raise KeyError(
+                    f"image_feature_levels requested {level!r} image features for "
+                    f"section {section!r}, but no {level}-level Gene or Protein "
+                    "coordinate source is available."
+                )
+        return explicit
+
+    has_spot = _has_coordinate_source(result, section, "spot")
+    has_enhanced = _has_coordinate_source(result, section, "enhanced")
+    if (config.gene_enhancement or config.protein_enhancement) and has_enhanced:
+        return ("enhanced",)
+    if has_spot:
+        return ("spot",)
+    if has_enhanced:
+        return ("enhanced",)
+    return ()
+
+
+def _image_feature_kwargs_for_level(config, level: str) -> Dict[str, Any]:
+    kwargs = dict(config.image_feature_kwargs)
+    level_kwargs = {}
+    for key, value in config.image_feature_level_kwargs.items():
+        if str(key).strip().lower() == level:
+            level_kwargs = dict(value)
+            break
+    kwargs.update(level_kwargs)
+
+    if (
+        level == "enhanced"
+        and "patch_size_spot" not in level_kwargs
+        and "resolution" in config.enhancement_kwargs
+    ):
+        kwargs["patch_size_spot"] = config.enhancement_kwargs["resolution"]
+    return kwargs
+
+
+def _select_image_feature_kwargs(kwargs: Mapping[str, Any], keys: set[str]) -> Dict[str, Any]:
+    return {key: value for key, value in kwargs.items() if key in keys}
+
+
+def _image_feature_level_output_dir(paths, level: str, section: str) -> Path:
+    root = paths.image_spot_dir if level == "spot" else paths.image_enhanced_dir
+    return root / section / "results"
+
+
 def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
     modalities = _canonical_modalities(config.modalities)
     if not modalities:
@@ -281,6 +473,9 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
         raise ValueError("raw_file_mode must be 'copy', 'symlink', or 'none'.")
     if str(config.image_feature_mode).lower() not in {"extract", "load"}:
         raise ValueError("image_feature_mode must be 'extract' or 'load'.")
+    _normalize_image_feature_levels(config.image_feature_levels)
+    _validate_image_feature_kwargs(config)
+    _validate_image_feature_level_kwargs(config)
     if "Image" in modalities and not ({"Gene", "Protein"} & set(modalities)):
         raise ValueError(
             "Image preprocessing needs Gene or Protein AnnData to provide spot coordinates."
@@ -903,7 +1098,11 @@ def _preflight_image_coordinate_inputs(
                     break
 
             if should_check_image_features:
-                for level in ("spot", "enhanced"):
+                levels_to_check = (
+                    _normalize_image_feature_levels(config.image_feature_levels)
+                    or _IMAGE_FEATURE_LEVELS
+                )
+                for level in levels_to_check:
                     try:
                         adata_obj = _preferred_coordinate_source(
                             result,
@@ -1132,27 +1331,55 @@ def _save_molecular_outputs(result, paths, sections):
 def _extract_image_cohort(config, result, paths, images, sections, modalities):
     if "Image" not in modalities:
         return
-    from ..preprocessing.image_features import extract_image_features
+    from ..preprocessing.image_features import (
+        _aggregate_image_features_to_spots,
+        _prepare_image_feature_workspace,
+    )
 
-    for level, output_root in (
-        ("spot", paths.image_spot_dir),
-        ("enhanced", paths.image_enhanced_dir),
-    ):
-        for section in sections:
-            try:
-                coordinates = _preferred_coordinate_source(result, section, level=level)
-            except KeyError:
-                continue
-            kwargs = dict(config.image_feature_kwargs)
-            kwargs.update(
-                image_path=str(images[section]),
+    for section in sections:
+        levels = _resolved_image_feature_levels(config, result, section)
+        if not levels:
+            continue
+
+        for level in levels:
+            coordinates = _preferred_coordinate_source(result, section, level=level)
+            _validate_pixel_coordinates_for_image(
+                adata_obj=coordinates,
+                image_path=images[section],
+                config=config,
+                context=(
+                    f"section {section!r}, {level}-level coordinates used for "
+                    "image feature extraction"
+                ),
+            )
+
+        workspace_kwargs = _select_image_feature_kwargs(
+            config.image_feature_kwargs,
+            _IMAGE_FEATURE_WORKSPACE_KEYS,
+        )
+        workspace = _prepare_image_feature_workspace(
+            image_path=str(images[section]),
+            output_dir=str(paths.image_grid_dir),
+            sample_name=section,
+            **workspace_kwargs,
+        )
+
+        for level in levels:
+            coordinates = _preferred_coordinate_source(result, section, level=level)
+            level_kwargs = _image_feature_kwargs_for_level(config, level)
+            aggregation_kwargs = _select_image_feature_kwargs(
+                level_kwargs,
+                _IMAGE_FEATURE_AGGREGATION_KEYS,
+            )
+            output_dir = _image_feature_level_output_dir(paths, level, section)
+            image_adata = _aggregate_image_features_to_spots(
+                workspace=workspace,
                 spot_coordinates=coordinates.obs.copy(),
-                output_dir=str(output_root),
-                sample_name=section,
+                output_dir=str(output_dir),
                 spot_x_key=config.x_key,
                 spot_y_key=config.y_key,
+                **aggregation_kwargs,
             )
-            image_adata = extract_image_features(**kwargs)
             image_adata.var["image"] = image_adata.var_names.astype(str)
             image_adata = remove_obs_columns_by_prefix(
                 image_adata,

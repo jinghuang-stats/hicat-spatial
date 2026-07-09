@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import shutil
 from typing import Sequence
@@ -8,6 +9,17 @@ import warnings
 import pandas as pd
 
 __all__ = ["extract_image_features"]
+
+
+@dataclass(frozen=True)
+class _ImageFeatureWorkspace:
+    """Reusable raw-image embedding workspace for one section."""
+
+    sample_dir: Path
+    model: str
+    raw_image_name: str
+    raw_image_size: tuple[int, int]
+    coordinate_scale: float
 
 
 _HIPT_SPECIFIC_KWARGS = {
@@ -241,6 +253,212 @@ def _validate_spot_coordinates_against_image(
         )
 
     return width, height
+
+
+def _prepare_image_feature_workspace(
+    image_path,
+    model: str = "uni",
+    output_dir=None,
+    sample_name: str | None = None,
+    patch_size_emb: int = 16,
+    device: str = "cuda",
+    checkpoint_path=None,
+    raw_image_name: str = "he-raw.jpg",
+    overwrite_raw_image: bool = False,
+    **kwargs,
+) -> _ImageFeatureWorkspace:
+    """Run raw-image preprocessing and grid embedding extraction once."""
+    model = model.lower().strip()
+    if model not in {"hipt", "uni"}:
+        raise ValueError("model must be one of {'hipt', 'uni'}.")
+
+    if patch_size_emb <= 0:
+        raise ValueError("patch_size_emb must be positive.")
+
+    _validate_model_specific_kwargs(model, kwargs)
+    checkpoint_path = _resolve_checkpoint_path(checkpoint_path, model=model)
+    device = _resolve_device(device)
+
+    sample_dir = _prepare_sample_dir(
+        image_path=image_path,
+        output_dir=output_dir,
+        sample_name=sample_name,
+        raw_image_name=raw_image_name,
+        overwrite=overwrite_raw_image,
+    )
+
+    raw_image_size = _validate_spot_coordinates_against_image(
+        pd.DataFrame({"pixel_x": [0.0], "pixel_y": [0.0]}),
+        sample_dir / raw_image_name,
+    )
+
+    if model == "hipt":
+        from .hipt.extract_features import hipt_extract_features
+        from .hipt.preprocess import preprocess_image
+        from .hipt.wrapper import _resolve_hipt_checkpoints
+
+        checkpoint_dir, vit256_checkpoint_path, vit4k_checkpoint_path = (
+            _resolve_hipt_checkpoints(checkpoint_path)
+        )
+        preprocess_image(
+            sample=str(sample_dir),
+            mask=kwargs.get("mask"),
+            pad_size=kwargs.get("pad_size", 256),
+        )
+        hipt_extract_features(
+            sample=str(sample_dir),
+            device=device,
+            checkpoint_path=checkpoint_dir,
+            vit256_checkpoint_path=vit256_checkpoint_path,
+            vit4k_checkpoint_path=vit4k_checkpoint_path,
+            reduction_method=kwargs.get("reduction_method"),
+            n_components=kwargs.get("n_components"),
+            smoothen_method=kwargs.get("smoothen_method", "cv"),
+            random_weights=kwargs.get("random_weights", False),
+            no_shift=kwargs.get("no_shift", False),
+            use_cache=kwargs.get("use_cache", True),
+        )
+        coordinate_scale = 1.0
+    else:
+        from .uni.extract_features import uni_extract_features
+        from .uni.histosweep import uni_generate_mask
+        from .uni.preprocess import uni_preprocess_image
+
+        coordinate_scale = float(kwargs.get("scale_value", 1.0))
+        if not 0 < coordinate_scale <= 1.0:
+            raise ValueError("UNI scale_value must be greater than 0 and at most 1.")
+        uni_preprocess_image(
+            sample=str(sample_dir),
+            scale_value=coordinate_scale,
+            pad_value=kwargs.get("pad_value", 16),
+        )
+        uni_generate_mask(
+            sample=str(sample_dir),
+            save_dir=kwargs.get("mask_save_dir", "mask"),
+            density_thresh=kwargs.get("density_thresh", 100),
+            clean_background_flag=kwargs.get("clean_background_flag", False),
+            min_size=kwargs.get("min_size", 10),
+            patch_size=patch_size_emb,
+        )
+        uni_extract_features(
+            sample=str(sample_dir),
+            device=device,
+            checkpoint_path=checkpoint_path,
+            batch_size=kwargs.get("batch_size", 128),
+            stride=kwargs.get("stride", 112),
+            num_workers=kwargs.get("num_workers", 8),
+        )
+
+    return _ImageFeatureWorkspace(
+        sample_dir=sample_dir,
+        model=model,
+        raw_image_name=raw_image_name,
+        raw_image_size=raw_image_size,
+        coordinate_scale=coordinate_scale,
+    )
+
+
+def _aggregate_image_features_to_spots(
+    workspace: _ImageFeatureWorkspace,
+    spot_coordinates_path=None,
+    spot_coordinates=None,
+    output_dir=None,
+    patch_size_spot: int = 280,
+    patch_size_emb: int = 16,
+    aggregation_method: str = "weighted",
+    normalize_by: str = "overlap",
+    ignore_zero_features: bool = False,
+    zero_tol: float = 1e-8,
+    npcs: int = 50,
+    n_clusters: int | Sequence[int] | None = (5, 10),
+    ncluster_list: int | Sequence[int] | None = None,
+    plot_clusters: bool = True,
+    plot_spot_size: int = 200,
+    spot_x_key: str = "pixel_x",
+    spot_y_key: str = "pixel_y",
+    cat_color=None,
+    dpi: int = 200,
+    invert_x: bool = False,
+    invert_y: bool = True,
+    random_state: int = 42,
+    save_h5ad: bool = True,
+    **kwargs,
+):
+    """Aggregate one prepared image embedding grid to one coordinate table."""
+    if patch_size_spot <= 0 or patch_size_emb <= 0:
+        raise ValueError("patch_size_spot and patch_size_emb must be positive.")
+
+    _validate_model_specific_kwargs(workspace.model, kwargs)
+
+    spot_coordinates = _load_spot_coordinates(
+        spot_coordinates_path=spot_coordinates_path,
+        spot_coordinates=spot_coordinates,
+        spot_x_key=spot_x_key,
+        spot_y_key=spot_y_key,
+    )
+    _validate_spot_coordinates_against_image(
+        spot_coordinates,
+        workspace.sample_dir / workspace.raw_image_name,
+    )
+
+    backend_coordinates = spot_coordinates
+    backend_patch_size_spot = patch_size_spot
+    if workspace.model == "uni" and workspace.coordinate_scale != 1.0:
+        backend_coordinates = spot_coordinates.copy()
+        backend_coordinates[["pixel_x", "pixel_y"]] *= workspace.coordinate_scale
+        backend_patch_size_spot = patch_size_spot * workspace.coordinate_scale
+
+    clusters = ncluster_list if ncluster_list is not None else n_clusters
+
+    common_kwargs = dict(
+        sample=workspace.sample_dir,
+        spot_coordinates=backend_coordinates,
+        output_dir=output_dir,
+        patch_size_spot=backend_patch_size_spot,
+        patch_size_emb=patch_size_emb,
+        aggregation_method=aggregation_method,
+        normalize_by=normalize_by,
+        ignore_zero_features=ignore_zero_features,
+        zero_tol=zero_tol,
+        ncluster_list=clusters,
+        npcs=npcs,
+        plot_clusters=plot_clusters,
+        plot_spot_size=plot_spot_size,
+        cat_color=cat_color,
+        dpi=dpi,
+        invert_x=invert_x,
+        invert_y=invert_y,
+        save_h5ad=save_h5ad,
+        random_state=random_state,
+    )
+
+    if workspace.model == "hipt":
+        from .hipt.hipt_2_spot import patch_2_spot as _aggregate
+    else:
+        from .uni.uni_2_spot import uni_patch_2_spot as _aggregate
+
+        common_kwargs.update(
+            spatial_key=kwargs.get("spatial_key", "spatial"),
+            spatial_coords_are_pixel=kwargs.get("spatial_coords_are_pixel", False),
+        )
+
+    result = _aggregate(**common_kwargs)
+
+    if result.n_obs != len(spot_coordinates):
+        raise RuntimeError(
+            "Image backend returned a different number of observations than the "
+            "input spot table."
+        )
+
+    result.obs["pixel_x"] = spot_coordinates["pixel_x"].to_numpy()
+    result.obs["pixel_y"] = spot_coordinates["pixel_y"].to_numpy()
+    result.uns["image_coordinate_system"] = {
+        "raw_image_width": int(workspace.raw_image_size[0]),
+        "raw_image_height": int(workspace.raw_image_size[1]),
+        "backend_coordinate_scale": float(workspace.coordinate_scale),
+        "boundary_normalization": normalize_by,
+    }
+    return result
 
 
 def extract_image_features(

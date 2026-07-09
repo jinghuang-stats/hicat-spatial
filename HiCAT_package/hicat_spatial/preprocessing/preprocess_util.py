@@ -28,8 +28,11 @@ class PreprocessPaths:
         Contour quality-control images created during enhancement.
     scribble_dir
         Extracted reference masks, labels, and scribble QC plots.
+    image_grid_dir
+        Shared model workspace for raw HIPT/UNI grid embeddings.
     image_spot_dir, image_enhanced_dir
-        Model workspaces for observed-spot and enhanced-grid image features.
+        Level-specific workspaces for observed-spot and enhanced-grid image
+        feature aggregation outputs.
     """
 
     cohort_dir: Path
@@ -37,6 +40,7 @@ class PreprocessPaths:
     preprocessed_dir: Path
     contour_dir: Path
     scribble_dir: Path
+    image_grid_dir: Path
     image_spot_dir: Path
     image_enhanced_dir: Path
 
@@ -843,6 +847,7 @@ def create_preprocess_output_dirs(preprocess_dir, cohort):
         preprocessed_dir=preprocessed_dir,
         contour_dir=preprocessed_dir / "contours",
         scribble_dir=preprocessed_dir / "extracted_scribbles",
+        image_grid_dir=preprocessed_dir / "image_features" / "grid",
         image_spot_dir=preprocessed_dir / "image_features" / "spot",
         image_enhanced_dir=preprocessed_dir / "image_features" / "enhanced",
     )
@@ -850,6 +855,7 @@ def create_preprocess_output_dirs(preprocess_dir, cohort):
         paths.raw_dir,
         paths.preprocessed_dir,
         paths.contour_dir,
+        paths.image_grid_dir,
         paths.image_spot_dir,
         paths.image_enhanced_dir,
     ]
