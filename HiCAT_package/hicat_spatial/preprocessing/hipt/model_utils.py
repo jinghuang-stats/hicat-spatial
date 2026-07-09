@@ -36,6 +36,27 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 from . import vision_transformer as vits
 from . import vision_transformer4k as vits4k
 
+def _load_trusted_checkpoint(pretrained_weights):
+    """Load a local HIPT checkpoint across PyTorch versions.
+
+    PyTorch 2.6 changed ``torch.load`` to default to ``weights_only=True``.
+    Some released HIPT checkpoints include pickled NumPy scalar metadata that
+    is rejected by that stricter mode. These checkpoint paths are explicitly
+    provided by the user, so loading with ``weights_only=False`` restores the
+    historical behavior. Users should only provide checkpoint files from a
+    trusted source.
+    """
+    try:
+        return torch.load(
+            pretrained_weights,
+            map_location="cpu",
+            weights_only=False,
+        )
+    except TypeError:
+        # Older PyTorch versions do not support the weights_only argument.
+        return torch.load(pretrained_weights, map_location="cpu")
+
+
 def get_vit256(pretrained_weights=None, arch='vit_small', device=torch.device('cuda:0')):
     r"""
     Builds ViT-256 Model.
@@ -58,7 +79,7 @@ def get_vit256(pretrained_weights=None, arch='vit_small', device=torch.device('c
     model256.to(device)
 
     if pretrained_weights is not None:
-        state_dict = torch.load(pretrained_weights, map_location="cpu")
+        state_dict = _load_trusted_checkpoint(pretrained_weights)
         if checkpoint_key is not None and checkpoint_key in state_dict:
             print(f"Take key {checkpoint_key} in provided checkpoint dict")
             state_dict = state_dict[checkpoint_key]
@@ -94,7 +115,7 @@ def get_vit4k(pretrained_weights=None, arch='vit4k_xs', device=torch.device('cud
     model4k.to(device)
 
     if pretrained_weights is not None:
-        state_dict = torch.load(pretrained_weights, map_location="cpu")
+        state_dict = _load_trusted_checkpoint(pretrained_weights)
         if checkpoint_key is not None and checkpoint_key in state_dict:
             print(f"Take key {checkpoint_key} in provided checkpoint dict")
             state_dict = state_dict[checkpoint_key]

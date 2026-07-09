@@ -846,14 +846,17 @@ def create_preprocess_output_dirs(preprocess_dir, cohort):
         image_spot_dir=preprocessed_dir / "image_features" / "spot",
         image_enhanced_dir=preprocessed_dir / "image_features" / "enhanced",
     )
-    for path in (
+    required_dirs = [
         paths.raw_dir,
         paths.preprocessed_dir,
         paths.contour_dir,
-        paths.scribble_dir,
         paths.image_spot_dir,
         paths.image_enhanced_dir,
-    ):
+    ]
+    if cohort == "reference":
+        required_dirs.append(paths.scribble_dir)
+
+    for path in required_dirs:
         path.mkdir(parents=True, exist_ok=True)
     return paths
 

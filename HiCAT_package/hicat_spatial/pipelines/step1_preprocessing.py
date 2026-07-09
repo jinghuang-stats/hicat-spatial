@@ -33,11 +33,13 @@ Typical use
 from __future__ import annotations
 
 import shutil
+import warnings
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 import anndata as ad
+import numpy as np
 
 from ..preprocessing.preprocess_util import (
     PreprocessPaths,
@@ -124,6 +126,10 @@ class PreprocessConfig:
         ``checkpoint_path``, patch settings, clustering, and plot settings.
     x_key, y_key : str, default=("pixel_x", "pixel_y")
         Image-pixel coordinate columns in every molecular ``adata.obs``.
+        ``x_key`` should be the horizontal image coordinate (column, bounded
+        by image width), and ``y_key`` should be the vertical coordinate (row,
+        bounded by image height). Some datasets store coordinates as
+        ``(row, column)`` or ``(y, x)``; in that case switch the keys.
     array_x_key, array_y_key : str, default=("array_x", "array_y")
         Array-grid coordinates used by scan-based contour candidates.
     label_key : str, default="label"
@@ -646,6 +652,281 @@ def _resolved_images(config, paths, sections, cohort, annotated=False):
     }
 
 
+def _image_size(image_path, config):
+    """Return image width and height without loading pixels when possible."""
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as image:
+            return image.size
+    except Exception:
+        image = read_he_image(image_path, color_order=config.color_order)
+        height, width = image.shape[:2]
+        return width, height
+
+
+def _preview_columns(columns, max_items=12):
+    columns = [str(column) for column in columns]
+    if len(columns) <= max_items:
+        return columns
+    return columns[:max_items] + [f"... ({len(columns) - max_items} more)"]
+
+
+def _coordinate_range_text(coordinates):
+    if coordinates.shape[0] == 0:
+        return "no observations"
+    x_min, y_min = np.nanmin(coordinates, axis=0)
+    x_max, y_max = np.nanmax(coordinates, axis=0)
+    return f"x=[{x_min:.3g}, {x_max:.3g}], y=[{y_min:.3g}, {y_max:.3g}]"
+
+
+def _outside_image_count(coordinates, width, height):
+    in_bounds = (
+        (coordinates[:, 0] >= 0)
+        & (coordinates[:, 0] < width)
+        & (coordinates[:, 1] >= 0)
+        & (coordinates[:, 1] < height)
+    )
+    return int((~in_bounds).sum())
+
+
+def _validate_pixel_coordinates_for_image(
+    *,
+    adata_obj,
+    image_path,
+    config,
+    context,
+):
+    """Validate configured x/y columns against one image and explain failures."""
+    missing = [
+        key for key in (config.x_key, config.y_key) if key not in adata_obj.obs
+    ]
+    if missing:
+        raise KeyError(
+            f"Coordinate check failed for {context}: missing obs columns "
+            f"{missing}. Stage 1 image-based steps require x_key/y_key to be "
+            "image-pixel coordinates. Available obs columns include "
+            f"{_preview_columns(adata_obj.obs.columns)}. If your data stores "
+            "coordinates as row/column, set x_key to the horizontal column "
+            "coordinate and y_key to the vertical row coordinate. "
+            "array_x_key/array_y_key are only for scan-based contour "
+            "detection, not replacements for x_key/y_key."
+        )
+
+    array_keys = {config.array_x_key, config.array_y_key}
+    pixel_keys = {config.x_key, config.y_key}
+    if array_keys.intersection(pixel_keys):
+        warnings.warn(
+            f"Coordinate check for {context}: x_key/y_key overlap with "
+            f"array_x_key/array_y_key ({sorted(array_keys.intersection(pixel_keys))}). "
+            "x_key/y_key should be image-pixel coordinates. array_x_key/"
+            "array_y_key should be array-grid coordinates used only by "
+            "scan_x/scan_y contour detection.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    try:
+        coordinates = adata_obj.obs[[config.x_key, config.y_key]].to_numpy(
+            dtype=float
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Coordinate check failed for {context}: x_key={config.x_key!r} "
+            f"and y_key={config.y_key!r} must contain numeric image-pixel "
+            "coordinates."
+        ) from exc
+
+    if coordinates.shape[0] == 0:
+        return
+
+    finite = np.isfinite(coordinates).all(axis=1)
+    if not finite.all():
+        raise ValueError(
+            f"Coordinate check failed for {context}: {int((~finite).sum())} "
+            "observations have non-finite x/y coordinates."
+        )
+
+    width, height = _image_size(image_path, config)
+    outside_count = _outside_image_count(coordinates, width=width, height=height)
+    if outside_count == 0:
+        return
+
+    swapped_coordinates = coordinates[:, [1, 0]]
+    swapped_outside_count = _outside_image_count(
+        swapped_coordinates,
+        width=width,
+        height=height,
+    )
+    message = (
+        f"Coordinate check failed for {context}: {outside_count} spot "
+        "coordinates lie outside the image.\n"
+        f"Image size: width={width}, height={height}.\n"
+        f"Using x_key={config.x_key!r}, y_key={config.y_key!r}: "
+        f"{_coordinate_range_text(coordinates)}.\n"
+        "Stage 1 expects x_key to be the horizontal image coordinate "
+        "(bounded by image width) and y_key to be the vertical image "
+        "(bounded by image height)."
+    )
+    if swapped_outside_count < outside_count:
+        message += (
+            "\nThe switched interpretation fits better: "
+            f"{swapped_outside_count} coordinates would be outside after "
+            f"using x_key={config.y_key!r}, y_key={config.x_key!r}. If your "
+            "data stores coordinates as row/column or y/x, switch x_key and "
+            "y_key in PreprocessConfig."
+        )
+    else:
+        message += (
+            "\nSwitching x_key/y_key does not appear to resolve the mismatch. "
+            "This may indicate that array/grid coordinates were used instead "
+            "of image-pixel coordinates, or that the AnnData coordinates and "
+            "image file use different resolution, cropping, rotation, or "
+            "scaling."
+        )
+    message += (
+        "\nIf you use scan_x or scan_y contour detection, keep array/grid "
+        "columns in array_x_key/array_y_key separately from pixel x_key/y_key."
+    )
+    raise ValueError(message)
+
+
+def _validate_scan_array_coordinates_for_enhancement(
+    *,
+    adata_obj,
+    config,
+    context,
+):
+    contour_method = str(config.enhancement_kwargs.get("contour_method", "auto"))
+    if contour_method not in {"scan_x", "scan_y"}:
+        return
+
+    missing = [
+        key
+        for key in (config.array_x_key, config.array_y_key)
+        if key not in adata_obj.obs
+    ]
+    if missing:
+        raise KeyError(
+            f"Coordinate check failed for {context}: contour_method="
+            f"{contour_method!r} requires array-grid coordinate columns "
+            f"{config.array_x_key!r} and {config.array_y_key!r}, but missing "
+            f"{missing}. Keep x_key/y_key as image-pixel coordinates and set "
+            "array_x_key/array_y_key to the array-grid columns used for "
+            "scan-based contour detection."
+        )
+
+
+def _iter_spot_molecular_sources(result, section):
+    for modality in ("Gene", "Protein"):
+        adata_obj = result["spot"].get(modality, {}).get(section)
+        if adata_obj is not None:
+            yield modality, adata_obj
+
+
+def _preflight_image_coordinate_inputs(
+    *,
+    config,
+    reference,
+    query,
+    reference_images,
+    query_images,
+    modalities,
+):
+    """Validate pixel and scan-coordinate settings before image-dependent work."""
+    extracts_image_features = (
+        "Image" in modalities and str(config.image_feature_mode).lower() == "extract"
+    )
+
+    cohorts = (
+        ("reference", reference, config.reference_sections, reference_images),
+        ("query", query, config.query_sections, query_images),
+    )
+    for cohort, result, sections, images in cohorts:
+        if not images:
+            continue
+        for section in sections:
+            image_path = images.get(section)
+            if image_path is None:
+                continue
+
+            checked_pixel_sources = set()
+            should_check_annotation = (
+                cohort == "reference" and config.label_color_dict is not None
+            )
+            should_check_image_features = extracts_image_features
+
+            for modality, enabled in (
+                ("Gene", config.gene_enhancement),
+                ("Protein", config.protein_enhancement),
+            ):
+                if modality not in modalities or not enabled:
+                    continue
+                adata_obj = result["spot"].get(modality, {}).get(section)
+                if adata_obj is None:
+                    continue
+                context = (
+                    f"{cohort} section {section!r}, spot-level {modality} "
+                    "used for molecular enhancement"
+                )
+                _validate_scan_array_coordinates_for_enhancement(
+                    adata_obj=adata_obj,
+                    config=config,
+                    context=context,
+                )
+                _validate_pixel_coordinates_for_image(
+                    adata_obj=adata_obj,
+                    image_path=image_path,
+                    config=config,
+                    context=context,
+                )
+                checked_pixel_sources.add(id(adata_obj))
+
+            if should_check_annotation:
+                for modality, adata_obj in _iter_spot_molecular_sources(
+                    result,
+                    section,
+                ):
+                    if id(adata_obj) in checked_pixel_sources:
+                        continue
+                    context = (
+                        f"{cohort} section {section!r}, spot-level {modality} "
+                        "used for scribble annotation"
+                    )
+                    _validate_pixel_coordinates_for_image(
+                        adata_obj=adata_obj,
+                        image_path=image_path,
+                        config=config,
+                        context=context,
+                    )
+                    checked_pixel_sources.add(id(adata_obj))
+                    break
+
+            if should_check_image_features:
+                for level in ("spot", "enhanced"):
+                    try:
+                        adata_obj = _preferred_coordinate_source(
+                            result,
+                            section,
+                            level=level,
+                        )
+                    except KeyError:
+                        continue
+                    if id(adata_obj) in checked_pixel_sources:
+                        continue
+                    context = (
+                        f"{cohort} section {section!r}, {level}-level "
+                        "coordinates used for image feature extraction"
+                    )
+                    _validate_pixel_coordinates_for_image(
+                        adata_obj=adata_obj,
+                        image_path=image_path,
+                        config=config,
+                        context=context,
+                    )
+                    checked_pixel_sources.add(id(adata_obj))
+
+
 def _add_reference_annotations(config, result, paths, images, sections):
     """Extract optional scribbles and propagate reference labels."""
     annotation_results = {}
@@ -1075,6 +1356,17 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
         )
         if needs_raw_images
         else {}
+    )
+
+    # Step 2b: fail early on common coordinate/image mismatches before running
+    # scribble extraction, molecular enhancement, or image-feature extraction.
+    _preflight_image_coordinate_inputs(
+        config=config,
+        reference=reference,
+        query=query,
+        reference_images=reference_images,
+        query_images=query_images,
+        modalities=modalities,
     )
 
     # Step 3: extract/propagate optional reference annotations.

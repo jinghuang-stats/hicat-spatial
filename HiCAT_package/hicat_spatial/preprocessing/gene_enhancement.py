@@ -775,8 +775,15 @@ def _known_spot_coordinates(raw_adata, x_key, y_key, image_shape):
         & (coordinates[:, 1] < height)
     )
     if not in_bounds.all():
+        outside_count = int((~in_bounds).sum())
         raise ValueError(
-            f"{int((~in_bounds).sum())} spot coordinates lie outside the image."
+            f"{outside_count} spot coordinates lie outside the image. "
+            "Check that x_key/y_key use pixel coordinates for the same image "
+            "file, not array/grid coordinates. If the coordinate ranges look "
+            "similar to the image height/width but are swapped, try switching "
+            "x_key and y_key. If the ranges are consistently too large or too "
+            "small, use the matching image resolution or rescale the "
+            "coordinates before preprocessing."
         )
     return coordinates
 
