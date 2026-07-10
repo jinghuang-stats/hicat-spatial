@@ -43,7 +43,8 @@ class ClusteringConfigStageConfig:
         Extra keywords for ``determine_multi_modal_embedding_config``. Common
         keys include ``hard_threshold``, ``alpha``, ``selection_criterion``,
         ``pcs_num_dic``, ``default_pcs_num``, ``candidate_methods``,
-        ``min_spots``, ``random_state``, and ``visualization_config``.
+        ``min_spots``, ``random_state``, ``visualization_config``, and the
+        optional HIPT/Image-only ``hipt_boundary_refinement_config``.
     """
 
     included_modalities: Sequence[str]

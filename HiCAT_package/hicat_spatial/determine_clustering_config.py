@@ -39,6 +39,27 @@ _DEFAULT_VISUALIZATION_CONFIG = {
 }
 
 
+_DEFAULT_HIPT_BOUNDARY_REFINEMENT_CONFIG = {
+    "enabled": False,
+    "image_modality": "Image",
+    "extra_boundary_cluster": True,
+    "x_key": None,
+    "y_key": None,
+    "boundary_cluster": None,
+    "boundary_features": None,
+    "candidate_feature_sets": None,
+    "min_cluster_size": 1,
+    "max_boundary_score_ratio": None,
+    "bd_num_nbs": 25,
+    "smooth_after_reassign": True,
+    "smooth_num_nbs": 15,
+    "metric": "euclidean",
+    "weighted_vote": False,
+    "use_refined_ari": True,
+    "strict": False,
+}
+
+
 def _normalize_visualization_config(
     visualization_config: Optional[Mapping[str, Any]],
 ) -> Dict[str, Any]:
@@ -71,6 +92,91 @@ def _normalize_visualization_config(
         raise ValueError("visualization_config['dpi'] must be at least 1.")
 
     return config
+
+
+def _normalize_hipt_boundary_refinement_config(
+    hipt_boundary_refinement_config: Optional[Mapping[str, Any]],
+    visualization_config: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Validate and fill optional HIPT boundary-refinement settings."""
+    config = dict(_DEFAULT_HIPT_BOUNDARY_REFINEMENT_CONFIG)
+
+    if hipt_boundary_refinement_config is None:
+        return config
+    if not isinstance(hipt_boundary_refinement_config, Mapping):
+        raise TypeError("hipt_boundary_refinement_config must be a mapping or None.")
+
+    invalid_keys = set(hipt_boundary_refinement_config) - set(config)
+    if invalid_keys:
+        raise ValueError(
+            "Unknown hipt_boundary_refinement_config key(s): "
+            f"{sorted(invalid_keys)}. Allowed keys: {sorted(config)}."
+        )
+
+    config.update(dict(hipt_boundary_refinement_config))
+    config["enabled"] = bool(config["enabled"])
+    config["extra_boundary_cluster"] = bool(config["extra_boundary_cluster"])
+    config["smooth_after_reassign"] = bool(config["smooth_after_reassign"])
+    config["weighted_vote"] = bool(config["weighted_vote"])
+    config["use_refined_ari"] = bool(config["use_refined_ari"])
+    config["strict"] = bool(config["strict"])
+
+    for key in ("min_cluster_size", "bd_num_nbs", "smooth_num_nbs"):
+        config[key] = int(config[key])
+        if config[key] < 1:
+            raise ValueError(f"hipt_boundary_refinement_config['{key}'] must be >= 1.")
+
+    if config["candidate_feature_sets"] is not None:
+        config["candidate_feature_sets"] = tuple(
+            tuple(feature_set) for feature_set in config["candidate_feature_sets"]
+        )
+
+    if config["enabled"]:
+        viz_config = _normalize_visualization_config(visualization_config)
+        config["x_key"] = config["x_key"] or viz_config["x_key"]
+        config["y_key"] = config["y_key"] or viz_config["y_key"]
+
+    return config
+
+
+def _apply_hipt_boundary_refinement_to_clusters(
+    image_adata,
+    cluster_labels,
+    cluster_key: str,
+    config: Mapping[str, Any],
+    print_results: bool = True,
+) -> Tuple[Optional[np.ndarray], Dict[str, Any]]:
+    """Refine HIPT boundary clusters for a modality-ARI evaluation."""
+    from .query_clustering import refine_hipt_boundary_clusters
+
+    eval_adata = image_adata.copy()
+    eval_adata.obs[cluster_key] = pd.Categorical(np.asarray(cluster_labels).astype(str))
+
+    kwargs = {
+        "image_adata": eval_adata,
+        "cluster_key": cluster_key,
+        "x_key": config["x_key"],
+        "y_key": config["y_key"],
+        "boundary_cluster": config["boundary_cluster"],
+        "boundary_features": config["boundary_features"],
+        "min_cluster_size": config["min_cluster_size"],
+        "max_boundary_score_ratio": config["max_boundary_score_ratio"],
+        "bd_num_nbs": config["bd_num_nbs"],
+        "smooth_after_reassign": config["smooth_after_reassign"],
+        "smooth_num_nbs": config["smooth_num_nbs"],
+        "metric": config["metric"],
+        "weighted_vote": config["weighted_vote"],
+        "copy": False,
+        "print_results": print_results,
+    }
+    if config["candidate_feature_sets"] is not None:
+        kwargs["candidate_feature_sets"] = config["candidate_feature_sets"]
+
+    refined_adata, info = refine_hipt_boundary_clusters(**kwargs)
+    final_cluster_key = info["final_cluster_key"]
+    refined_labels = refined_adata.obs[final_cluster_key].astype(str).to_numpy()
+
+    return refined_labels, info
 
 
 def _safe_path_component(value: Any) -> str:
@@ -417,6 +523,7 @@ def evaluate_modality_ari(
     random_state=0,
     print_results=True,
     visualization_config=None,
+    hipt_boundary_refinement_config=None,
 ):
     """
     Evaluate each modality by computing clustering ARI across reference sections.
@@ -471,6 +578,12 @@ def evaluate_modality_ari(
         Shared plotting configuration. Set ``plot_modality_clusters=True``
         and provide ``output_dir`` to save one KMeans spatial pattern per
         modality and reference section.
+    hipt_boundary_refinement_config : mapping or None, optional
+        Optional HIPT-specific boundary correction for Image modality ARI.
+        When ``{"enabled": True}``, Image KMeans uses one extra cluster by
+        default, identifies the HIPT boundary/background cluster, reassigns it
+        to nearby non-boundary clusters, and uses the refined ARI for modality
+        selection. Raw and refined ARIs are both stored in the output table.
 
     Returns
     -------
@@ -485,6 +598,10 @@ def evaluate_modality_ari(
     """
     visualization_config = _normalize_visualization_config(
         visualization_config
+    )
+    hipt_boundary_config = _normalize_hipt_boundary_refinement_config(
+        hipt_boundary_refinement_config,
+        visualization_config=visualization_config,
     )
 
     if pcs_num_dic is None:
@@ -554,6 +671,14 @@ def evaluate_modality_ari(
 
             unique_labels = pd.Series(y_true).unique()
             n_clusters = len(unique_labels)
+            boundary_refinement_requested = (
+                hipt_boundary_config["enabled"]
+                and modality == hipt_boundary_config["image_modality"]
+            )
+            n_clusters_eval = n_clusters + int(
+                boundary_refinement_requested
+                and hipt_boundary_config["extra_boundary_cluster"]
+            )
 
             if n_clusters < 2:
                 ari_records.append(
@@ -563,14 +688,22 @@ def evaluate_modality_ari(
                         "n_obs": adata_use.n_obs,
                         "n_features": adata_use.n_vars,
                         "n_labels": n_clusters,
+                        "n_clusters": np.nan,
                         "pcs_num": pcs_num,
                         "ari": np.nan,
+                        "ari_raw": np.nan,
+                        "ari_refined": np.nan,
+                        "boundary_refinement_requested": boundary_refinement_requested,
+                        "boundary_refinement_applied": False,
+                        "boundary_cluster": None,
+                        "boundary_final_cluster_key": None,
+                        "boundary_refinement_status": "not_evaluated",
                         "status": "skipped: fewer than 2 labels",
                     }
                 )
                 continue
 
-            if n_clusters >= adata_use.n_obs:
+            if n_clusters_eval >= adata_use.n_obs:
                 ari_records.append(
                     {
                         "modality": modality,
@@ -578,8 +711,16 @@ def evaluate_modality_ari(
                         "n_obs": adata_use.n_obs,
                         "n_features": adata_use.n_vars,
                         "n_labels": n_clusters,
+                        "n_clusters": n_clusters_eval,
                         "pcs_num": pcs_num,
                         "ari": np.nan,
+                        "ari_raw": np.nan,
+                        "ari_refined": np.nan,
+                        "boundary_refinement_requested": boundary_refinement_requested,
+                        "boundary_refinement_applied": False,
+                        "boundary_cluster": None,
+                        "boundary_final_cluster_key": None,
+                        "boundary_refinement_status": "not_evaluated",
                         "status": "skipped: n_clusters >= n_obs",
                     }
                 )
@@ -595,15 +736,57 @@ def evaluate_modality_ari(
 
                 y_pred = kmeans_clustering(
                     features_matrix=modality_pcs,
-                    n_clusters=n_clusters,
+                    n_clusters=n_clusters_eval,
                     random_state=random_state,
                 )
 
-                ari = adjusted_rand_score(y_true, y_pred)
+                ari_raw = adjusted_rand_score(y_true, y_pred)
+                ari = ari_raw
+                ari_refined = np.nan
+                final_labels = y_pred
+                boundary_cluster = None
+                boundary_final_cluster_key = None
+                boundary_refinement_applied = False
+                boundary_refinement_status = "not_requested"
+
+                if boundary_refinement_requested:
+                    try:
+                        refined_labels, boundary_info = (
+                            _apply_hipt_boundary_refinement_to_clusters(
+                                image_adata=adata_use,
+                                cluster_labels=y_pred,
+                                cluster_key="modality_eval_cluster",
+                                config=hipt_boundary_config,
+                                print_results=print_results,
+                            )
+                        )
+                        final_labels = refined_labels
+                        ari_refined = adjusted_rand_score(y_true, refined_labels)
+                        if hipt_boundary_config["use_refined_ari"]:
+                            ari = ari_refined
+                        boundary_cluster = boundary_info.get("boundary_cluster")
+                        boundary_final_cluster_key = boundary_info.get("final_cluster_key")
+                        boundary_refinement_applied = bool(
+                            boundary_info.get("boundary_refinement_performed", False)
+                        )
+                        boundary_refinement_status = (
+                            "applied"
+                            if boundary_refinement_applied
+                            else "no_boundary_detected"
+                        )
+                    except Exception as boundary_exc:
+                        if hipt_boundary_config["strict"]:
+                            raise
+                        boundary_refinement_status = f"skipped: {boundary_exc}"
+                        if print_results:
+                            print(
+                                f"{section}: HIPT boundary refinement skipped - "
+                                f"{boundary_exc}"
+                            )
 
                 plot_path = _save_clustering_pattern(
                     input_adata=adata_use,
-                    cluster_labels=y_pred,
+                    cluster_labels=final_labels,
                     cluster_key="modality_eval_cluster",
                     stage="informative_modalities",
                     group_name=modality,
@@ -623,8 +806,16 @@ def evaluate_modality_ari(
                         "n_obs": adata_use.n_obs,
                         "n_features": adata_use.n_vars,
                         "n_labels": n_clusters,
+                        "n_clusters": n_clusters_eval,
                         "pcs_num": pcs_num,
                         "ari": ari,
+                        "ari_raw": ari_raw,
+                        "ari_refined": ari_refined,
+                        "boundary_refinement_requested": boundary_refinement_requested,
+                        "boundary_refinement_applied": boundary_refinement_applied,
+                        "boundary_cluster": boundary_cluster,
+                        "boundary_final_cluster_key": boundary_final_cluster_key,
+                        "boundary_refinement_status": boundary_refinement_status,
                         "plot_path": plot_path,
                         "status": "success",
                     }
@@ -633,6 +824,7 @@ def evaluate_modality_ari(
                 if print_results:
                     print(
                         f"{section}: n_labels={n_clusters}, "
+                        f"n_clusters={n_clusters_eval}, "
                         f"ARI={ari:.4f}"
                     )
 
@@ -644,8 +836,16 @@ def evaluate_modality_ari(
                         "n_obs": adata_use.n_obs,
                         "n_features": adata_use.n_vars,
                         "n_labels": n_clusters,
+                        "n_clusters": n_clusters_eval,
                         "pcs_num": pcs_num,
                         "ari": np.nan,
+                        "ari_raw": np.nan,
+                        "ari_refined": np.nan,
+                        "boundary_refinement_requested": boundary_refinement_requested,
+                        "boundary_refinement_applied": False,
+                        "boundary_cluster": None,
+                        "boundary_final_cluster_key": None,
+                        "boundary_refinement_status": "failed",
                         "status": f"failed: {str(e)}",
                     }
                 )
@@ -668,6 +868,8 @@ def evaluate_modality_ari(
         .groupby("modality", as_index=False)
         .agg(
             average_ari=("ari", "mean"),
+            average_ari_raw=("ari_raw", "mean"),
+            average_ari_refined=("ari_refined", "mean"),
             median_ari=("ari", "median"),
             min_ari=("ari", "min"),
             max_ari=("ari", "max"),
@@ -823,6 +1025,7 @@ def select_informative_modalities(
     exclude_mode="exact",
     print_results=True,
     visualization_config=None,
+    hipt_boundary_refinement_config=None,
 ):
     """
     Select informative modalities based on unsupervised clustering agreement
@@ -922,6 +1125,12 @@ def select_informative_modalities(
         Optional settings passed to ``evaluate_modality_ari``. Enable
         ``plot_modality_clusters`` and provide ``output_dir`` to save the
         section-level clustering patterns used for modality ARI evaluation.
+    hipt_boundary_refinement_config : mapping or None, optional
+        Optional HIPT-specific correction for Image modality ARI. When enabled,
+        Image KMeans uses one extra boundary cluster by default; the likely
+        HIPT boundary/background cluster is detected, reassigned to nearby
+        non-boundary clusters, and the refined ARI is used for modality
+        selection.
 
     Returns
     -------
@@ -982,6 +1191,10 @@ def select_informative_modalities(
     visualization_config = _normalize_visualization_config(
         visualization_config
     )
+    hipt_boundary_refinement_config = _normalize_hipt_boundary_refinement_config(
+        hipt_boundary_refinement_config,
+        visualization_config=visualization_config,
+    )
 
     modality_ref_dic = {
         "Gene": ref_gene_dic,
@@ -1021,6 +1234,7 @@ def select_informative_modalities(
         random_state=random_state,
         print_results=print_results,
         visualization_config=visualization_config,
+        hipt_boundary_refinement_config=hipt_boundary_refinement_config,
     )
 
     # ------------------------------------------------------------
@@ -1066,6 +1280,7 @@ def select_informative_modalities(
             "exclude_regions": exclude_regions,
             "exclude_mode": exclude_mode,
             "visualization_config": visualization_config,
+            "hipt_boundary_refinement_config": hipt_boundary_refinement_config,
         },
     }
 
@@ -1621,6 +1836,7 @@ def determine_multi_modal_embedding_config(
     align_by_obs_names=False,
     print_results=True,
     visualization_config=None,
+    hipt_boundary_refinement_config=None,
 ) -> MultiModalClusteringConfigResult:
     """
     Determine the multi-modal embedding configuration from reference sections.
@@ -1791,6 +2007,14 @@ def determine_multi_modal_embedding_config(
             └── selected_features/
                 └── <section>_clusters.png
 
+    hipt_boundary_refinement_config : mapping or None, optional
+        Optional HIPT-specific correction used only during Image-modality ARI
+        evaluation. Set ``{"enabled": True}`` to cluster Image features with
+        one extra candidate boundary cluster by default, reassign the likely
+        boundary/background cluster to nearby non-boundary clusters, and use
+        the refined ARI for modality selection. Raw and refined ARIs are both
+        stored in ``config_result.modality_ari_df``.
+
     Returns
     -------
     config_result : MultiModalClusteringConfigResult
@@ -1900,6 +2124,7 @@ def determine_multi_modal_embedding_config(
         exclude_mode=modality_exclude_mode,
         print_results=print_results,
         visualization_config=visualization_config,
+        hipt_boundary_refinement_config=hipt_boundary_refinement_config,
     )
 
     selected_modalities = modality_result["selected_modalities"]
