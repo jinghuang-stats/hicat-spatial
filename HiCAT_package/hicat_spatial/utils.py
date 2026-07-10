@@ -218,12 +218,19 @@ def rank_genes_groups(
         else:
             fold_change = in_mean.values / (out_mean.values + 1e-9)
 
+        # Preserve the original HiCAT filtering logic exactly.  Do not add a
+        # small epsilon here: with min_in_out_group_ratio=1, adding epsilon can
+        # turn 1 / 1 into 0.999999999 and incorrectly remove genes that should
+        # pass the old threshold.  Direct division keeps 1/1 == 1, positive/0
+        # as inf, and 0/0 as nan.
+        in_out_group_ratio = in_fraction / out_fraction
+
         result_df = pd.DataFrame(
             {
                 "genes": genes,
                 "in_group_fraction": in_fraction.tolist(),
                 "out_group_fraction": out_fraction.tolist(),
-                "in_out_group_ratio": (in_fraction / (out_fraction + 1e-9)).tolist(),
+                "in_out_group_ratio": in_out_group_ratio.tolist(),
                 "in_group_mean_exp": in_mean.tolist(),
                 "out_group_mean_exp": out_mean.tolist(),
                 "fold_change": fold_change.tolist(),
