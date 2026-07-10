@@ -1,0 +1,36 @@
+name: hicat
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.11
+  - numpy=1.26.2
+  - pandas=2.3.0
+  - scipy=1.11.4
+  - anndata=0.10.3
+  - h5py=3.10.0
+  - scanpy=1.9.6
+  - leidenalg=0.10.2
+  - python-igraph=0.10.8
+  - scikit-learn=1.7.0
+  - matplotlib=3.8.2
+  - seaborn=0.13.2
+  - networkx=3.2.1
+  - pillow=10.1.0
+  - scikit-image=0.23.2
+  - tifffile=2024.5.22
+  - pytorch=2.4.0
+  - torchvision=0.19.0
+  - pip
+  - pip:
+      - louvain==0.8.1
+      - pynndescent==0.5.11
+      - umap-learn==0.5.5
+      - hnswlib==0.8.0
+      - bigtree==0.19.3
+      - opencv-python==4.8.1.78
+      - timm==1.0.22
+      - einops==0.8.2
+      - tqdm==4.66.1
+      - psutil==6.0.0
+      - brokenaxes==0.6.2
