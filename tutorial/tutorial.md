@@ -35,14 +35,14 @@ git clone https://github.com/jinghuang-stats/HiCAT.git
 cd HiCAT
 
 python -m pip install --upgrade pip
-python -m pip install -e ".[notebook]"
+python -m pip install -e "./HiCAT_package[notebook]" 
 
 ```
 
 Install the image extras if extracting image features (e.g., by HIPT or UNI)
 
 ```bash
-python -m pip install -e ".[image,notebook]"
+python -m pip install -e "./HiCAT_package[image,notebook]"
 
 ```
 
@@ -92,9 +92,12 @@ data/
 
 ### 3. Imports and run settings
 ```python
-from pathlib import Path
-
 import pandas as pd
+from pathlib import Path
+from PIL import Image
+import matplotlib.colors as clr
+
+Image.MAX_IMAGE_PIXELS = None
 
 from hicat_spatial import (
     ClusteringConfigStageConfig,
@@ -117,16 +120,21 @@ from hicat_spatial import (
 ```
 
 ```python
-analysis_root = Path("tutorial_results")
-data_dir = Path("data")
+# set the directory
+project_root = Path.cwd()
+
+data_dir = project_root / "data"
+analysis_root = project_root / "tutorial_results"
 preprocess_dir = analysis_root / "01_preprocessing"
+
+checkpoint_root = project_root / "checkpoints"
 
 reference_sections = ["H1", "G2", "E1"]
 query_sections = ["H2"]
+avail_modalities = ("Gene", "Image")
 
 label_key = "label"
-x_key = "pixel_x"
-y_key = "pixel_y"
+
 ```
 
 Create the raw-data folder:
