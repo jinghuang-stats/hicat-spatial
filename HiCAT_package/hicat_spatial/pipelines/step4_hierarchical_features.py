@@ -44,6 +44,13 @@ class HierarchicalFeatureStageConfig:
         Raise for unavailable modalities/features instead of skipping them.
     keep_raw_results : bool, default=True
         Retain lower-level feature-selection results for inspection.
+    make_image_nonnegative : bool, default=True
+        Shift Image feature columns to be non-negative before hierarchical
+        feature selection. This is useful for HIPT/UNI embeddings because
+        their dimensions can contain negative values, while the current
+        rank/filtering logic expects non-negative feature values. The shift is
+        applied to copied AnnData objects and does not mutate the input
+        ``ref_adata_by_modality``.
     """
 
     anchor_scenario: str
@@ -52,6 +59,7 @@ class HierarchicalFeatureStageConfig:
     count_num: int = 1
     strict: bool = False
     keep_raw_results: bool = True
+    make_image_nonnegative: bool = True
 
 
 @dataclass
@@ -133,6 +141,7 @@ def run_hierarchical_feature_stage(
         construct_multimodal_hierarchical_feature_results,
         select_hierarchical_genes_pipeline,
     )
+    from ..preprocessing.preprocess_util import make_nonnegative_adata
 
     if config.anchor_scenario not in {"nn_based", "quantile_based"}:
         raise ValueError("anchor_scenario must be 'nn_based' or 'quantile_based'.")
@@ -174,6 +183,11 @@ def run_hierarchical_feature_stage(
                 section: ref_adata_by_modality[modality][section]
                 for section in reference_sections
             }
+            if modality == "Image" and config.make_image_nonnegative:
+                modality_ref_dic = {
+                    section: make_nonnegative_adata(adata, copy=True)
+                    for section, adata in modality_ref_dic.items()
+                }
             modality_result = select_hierarchical_genes_pipeline(
                 ref_adata_dic=modality_ref_dic,
                 hier_tree=hier_tree,

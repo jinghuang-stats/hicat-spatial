@@ -472,6 +472,17 @@ def cluster_integrated_embedding(
             n_neighbors=clustering_config.get("n_neighbors", 15),
             random_state=random_state,
             leiden_key=cluster_key,
+            neighbors_method=clustering_config.get("neighbors_method", "umap"),
+            neighbors_metric=clustering_config.get(
+                "neighbors_metric",
+                clustering_config.get("metric", "euclidean"),
+            ),
+            leiden_flavor=clustering_config.get("leiden_flavor", "leidenalg"),
+            leiden_directed=clustering_config.get("leiden_directed", None),
+            leiden_n_iterations=clustering_config.get(
+                "leiden_n_iterations",
+                None,
+            ),
             return_info=True,
         )
 

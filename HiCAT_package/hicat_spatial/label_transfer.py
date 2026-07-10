@@ -565,6 +565,98 @@ class HierarchicalTransferSession:
             )
         return modalities
 
+    def _resolve_round_cluster_control(
+        self,
+        clustering_config: Mapping[str, Any],
+        selected_modalities: List[str],
+        parent_node: str,
+        boundary_refinement_config: Optional[Mapping[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Return optional per-round cluster-control settings.
+
+        Image-only HIPT Leiden clustering is sensitive to Scanpy/Leiden
+        neighbor-graph versions. In newer environments the graph can fragment
+        into many connected components, producing far more clusters than the
+        historical implementation. When boundary refinement is enabled, we use
+        a conservative automatic cap: one cluster per parent-region plus one
+        extra boundary cluster.
+
+        The explicit ``max_clusters="legacy"`` mode is a compatibility-style
+        tolerance, not a request to rerun the exact old Scanpy graph. It uses
+        the old manual workflow's large-cluster threshold,
+        ``2 * n_parent_regions + boundary_extra``, as a direct cap because
+        newer environments may stay fragmented even after lowering resolution.
+        """
+        explicit = clustering_config.get(
+            "cluster_control",
+            clustering_config.get(
+                "cluster_control_config",
+                clustering_config.get("hipt_cluster_control_config", None),
+            ),
+        )
+
+        if explicit is not None:
+            control = _normalize_enabled_config(explicit) or {}
+            max_clusters = control.get("max_clusters")
+            if isinstance(max_clusters, str):
+                mode = max_clusters.lower().strip()
+                n_parent_regions = len(self.hier_tree.get_regions(parent_node))
+                include_boundary = bool(
+                    control.get(
+                        "include_boundary_cluster",
+                        _config_is_enabled(boundary_refinement_config),
+                    )
+                )
+                boundary_extra = 1 if include_boundary else 0
+                if mode in {"auto", "parent_regions_plus_boundary"}:
+                    control["max_clusters"] = n_parent_regions + boundary_extra
+                elif mode in {"parent_regions", "regions"}:
+                    control["max_clusters"] = n_parent_regions
+                elif mode in {"legacy", "legacy_large_cluster_limit"}:
+                    control["max_clusters"] = 2 * n_parent_regions + boundary_extra
+                else:
+                    raise ValueError(
+                        "cluster_control['max_clusters'] must be an integer or "
+                        "'auto', 'parent_regions_plus_boundary', "
+                        "'parent_regions', or 'legacy'."
+                    )
+            control.setdefault("method", "merge")
+            control.setdefault("relabel_dense", True)
+            control.setdefault(
+                "random_state",
+                int(clustering_config.get("random_state", 0)),
+            )
+            return control
+
+        dim_reduction_method = str(
+            clustering_config.get(
+                "dim_reduction_method",
+                clustering_config.get("reduce_dimension_approach", "pca"),
+            )
+        ).lower()
+        is_image_only_pca = (
+            list(selected_modalities) == ["Image"]
+            and dim_reduction_method == "pca"
+        )
+        if not (
+            is_image_only_pca
+            and _config_is_enabled(boundary_refinement_config)
+        ):
+            return None
+
+        n_parent_regions = len(self.hier_tree.get_regions(parent_node))
+        return {
+            "enabled": True,
+            "method": "merge",
+            "max_clusters": max(n_parent_regions + 1, 2),
+            "min_cluster_spots": 1,
+            "relabel_dense": True,
+            "random_state": int(clustering_config.get("random_state", 0)),
+            "auto_reason": "image_only_pca_with_boundary_refinement",
+            "auto_parent_node": parent_node,
+            "auto_parent_region_count": n_parent_regions,
+        }
+
     def _output_node_label(self, node: str) -> str:
         if self.hier_tree.is_leaf(node):
             regions = self.hier_tree.get_regions(node)
@@ -835,12 +927,38 @@ class HierarchicalTransferSession:
             modalities=anchor_modalities,
         )
 
+        round_boundary_refinement_config = _normalize_enabled_config(
+            deepcopy(self.boundary_refinement_config)
+        )
+        round_gene_subtyping_config = _normalize_enabled_config(
+            deepcopy(self.gene_subtyping_config)
+        )
+        if round_gene_subtyping_config is not None:
+            round_gene_subtyping_config = dict(round_gene_subtyping_config)
+            if round_gene_subtyping_config.get("enabled", True):
+                target_genes, nontarget_genes = self._get_gene_subtyping_features(
+                    parent_node,
+                    child_1,
+                    child_2,
+                    count_num=round_gene_subtyping_config.get("count_num"),
+                )
+                round_gene_subtyping_config["target_genes"] = target_genes
+                round_gene_subtyping_config["nontarget_genes"] = nontarget_genes
+
         round_clustering_config = deepcopy(dict(clustering_config))
         round_clustering_config["features_dic"] = {
             modality: features_dic[modality]
             for modality in selected_modalities
             if modality in features_dic
         }
+        round_cluster_control = self._resolve_round_cluster_control(
+            clustering_config=round_clustering_config,
+            selected_modalities=selected_modalities,
+            parent_node=parent_node,
+            boundary_refinement_config=round_boundary_refinement_config,
+        )
+        if round_cluster_control is not None:
+            round_clustering_config["cluster_control"] = round_cluster_control
         if round_clustering_config.get("clustering_method") == "kmeans":
             requested_clusters = int(round_clustering_config.get("n_clusters", 2))
             round_clustering_config["n_clusters"] = min(
@@ -866,24 +984,6 @@ class HierarchicalTransferSession:
             align_by_obs_names=True,
             print_results=self.print_results,
         )
-
-        round_boundary_refinement_config = _normalize_enabled_config(
-            deepcopy(self.boundary_refinement_config)
-        )
-        round_gene_subtyping_config = _normalize_enabled_config(
-            deepcopy(self.gene_subtyping_config)
-        )
-        if round_gene_subtyping_config is not None:
-            round_gene_subtyping_config = dict(round_gene_subtyping_config)
-            if round_gene_subtyping_config.get("enabled", True):
-                target_genes, nontarget_genes = self._get_gene_subtyping_features(
-                    parent_node,
-                    child_1,
-                    child_2,
-                    count_num=round_gene_subtyping_config.get("count_num"),
-                )
-                round_gene_subtyping_config["target_genes"] = target_genes
-                round_gene_subtyping_config["nontarget_genes"] = nontarget_genes
 
         assignment_query_dic = local_query_dic
         if (

@@ -1,13 +1,38 @@
+import inspect
 import re
 import pandas as pd
 import numpy as np
 import scanpy as sc
 import anndata as ad
 from scipy.sparse import issparse
+from scipy.sparse.csgraph import connected_components
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
+
+
+def _filter_supported_kwargs(function, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only keyword arguments accepted by ``function``.
+
+    This keeps HiCAT compatible with nearby Scanpy versions whose function
+    signatures differ slightly while still allowing us to pass explicit
+    clustering backend choices when supported.
+    """
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError):
+        return kwargs
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return kwargs
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key in signature.parameters
+    }
 
 
 def rank_genes_groups(
@@ -537,6 +562,11 @@ def leiden_clustering(
     n_neighbors=10,
     random_state=0,
     leiden_key="leiden_clusters",
+    neighbors_method="umap",
+    neighbors_metric="euclidean",
+    leiden_flavor="leidenalg",
+    leiden_directed=None,
+    leiden_n_iterations=None,
     return_info=False,
 ):
     """
@@ -559,6 +589,27 @@ def leiden_clustering(
 
     leiden_key : str, default="leiden_clusters"
         Column name used internally to store Leiden cluster labels.
+
+    neighbors_method : str or None, default="umap"
+        Neighbor graph backend passed to ``scanpy.pp.neighbors`` when
+        supported. The default is explicit to avoid silent Scanpy default
+        changes.
+
+    neighbors_metric : str, default="euclidean"
+        Distance metric passed to ``scanpy.pp.neighbors`` when supported.
+
+    leiden_flavor : {"leidenalg", "igraph"} or None, default="leidenalg"
+        Leiden backend passed to ``scanpy.tl.leiden`` when supported. The
+        default matches the historical Scanpy 1.9.x backend used in the
+        original HiCAT experiments.
+
+    leiden_directed : bool or None, default=None
+        Optional ``directed`` argument for ``scanpy.tl.leiden``. Leave as
+        ``None`` to use the backend's default. For ``flavor="igraph"``, Scanpy
+        expects ``directed=False``.
+
+    leiden_n_iterations : int or None, default=None
+        Optional ``n_iterations`` argument for ``scanpy.tl.leiden``.
 
     return_info : bool, default=False
         If True, return both cluster labels and a dictionary containing
@@ -595,17 +646,55 @@ def leiden_clustering(
 
     tmp = ad.AnnData(features_matrix)
 
+    neighbors_kwargs = {
+        "n_neighbors": n_neighbors_used,
+        "random_state": random_state,
+        "method": neighbors_method,
+        "metric": neighbors_metric,
+    }
+    if neighbors_method is None:
+        neighbors_kwargs.pop("method")
+    if neighbors_metric is None:
+        neighbors_kwargs.pop("metric")
+
     sc.pp.neighbors(
         tmp,
-        n_neighbors=n_neighbors_used,
-        random_state=random_state,
+        **_filter_supported_kwargs(sc.pp.neighbors, neighbors_kwargs),
     )
+
+    n_connected_components = None
+    connected_component_sizes = None
+    if "connectivities" in tmp.obsp:
+        n_connected_components, component_labels = connected_components(
+            tmp.obsp["connectivities"],
+            directed=False,
+        )
+        connected_component_sizes = (
+            pd.Series(component_labels)
+            .value_counts()
+            .sort_values(ascending=False)
+            .astype(int)
+            .tolist()
+        )
+
+    leiden_kwargs = {
+        "resolution": resolution,
+        "key_added": leiden_key,
+        "random_state": random_state,
+        "flavor": leiden_flavor,
+        "directed": leiden_directed,
+        "n_iterations": leiden_n_iterations,
+    }
+    if leiden_flavor is None:
+        leiden_kwargs.pop("flavor")
+    if leiden_directed is None:
+        leiden_kwargs.pop("directed")
+    if leiden_n_iterations is None:
+        leiden_kwargs.pop("n_iterations")
 
     sc.tl.leiden(
         tmp,
-        resolution=resolution,
-        key_added=leiden_key,
-        random_state=random_state,
+        **_filter_supported_kwargs(sc.tl.leiden, leiden_kwargs),
     )
 
     y_pred = tmp.obs[leiden_key].astype(int).to_numpy()
@@ -620,6 +709,13 @@ def leiden_clustering(
             "n_neighbors": n_neighbors,
             "n_neighbors_used": n_neighbors_used,
             "random_state": random_state,
+            "neighbors_method": neighbors_method,
+            "neighbors_metric": neighbors_metric,
+            "leiden_flavor": leiden_flavor,
+            "leiden_directed": leiden_directed,
+            "leiden_n_iterations": leiden_n_iterations,
+            "n_connected_components": n_connected_components,
+            "connected_component_sizes": connected_component_sizes,
         }
 
         return y_pred, cluster_info

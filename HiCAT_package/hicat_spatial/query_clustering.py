@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 from scipy.sparse import issparse
+from sklearn.cluster import KMeans
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
@@ -48,6 +49,181 @@ from .multi_modal_integration import (
 SUPPORTED_MODALITIES = ("Gene", "Image", "Protein")
 SUPPORTED_REDUCTION_APPROACHES = ("pca", "selected_features")
 SUPPORTED_CLUSTERING_METHODS = ("kmeans", "leiden")
+
+
+def _dense_string_labels(labels: Sequence[Any]) -> pd.Series:
+    """Return labels as dense string codes ordered by descending cluster size."""
+    labels = pd.Series(labels, dtype="object").astype(str)
+    counts = labels.value_counts()
+    mapping = {old: str(i) for i, old in enumerate(counts.index)}
+    return labels.map(mapping).astype(str)
+
+
+def _merge_excess_clusters_by_centroid(
+    labels: pd.Series,
+    embedding: np.ndarray,
+    max_clusters: int,
+    min_cluster_spots: int = 1,
+) -> Tuple[pd.Series, Dict[str, Any]]:
+    """Merge excess or tiny clusters into nearest retained cluster centroids."""
+    counts = labels.value_counts()
+    if counts.empty:
+        return labels, {"merge_map": {}}
+
+    max_clusters = max(1, min(int(max_clusters), int(counts.shape[0])))
+    min_cluster_spots = max(1, int(min_cluster_spots))
+
+    large_labels = counts[counts >= min_cluster_spots].index.tolist()
+    if len(large_labels) >= 2:
+        keep_labels = large_labels[:max_clusters]
+    else:
+        keep_labels = counts.index[:max_clusters].tolist()
+
+    if len(keep_labels) == 0:
+        keep_labels = [counts.index[0]]
+
+    merge_labels = [label for label in counts.index if label not in keep_labels]
+    if len(merge_labels) == 0:
+        return labels.copy(), {"merge_map": {}}
+
+    embedding = np.asarray(embedding)
+    centroid_by_label = {
+        label: embedding[labels.to_numpy() == label].mean(axis=0)
+        for label in counts.index
+    }
+    kept_centroids = np.vstack([centroid_by_label[label] for label in keep_labels])
+    kept_labels_array = np.asarray(keep_labels, dtype=object)
+
+    merge_map: Dict[str, str] = {}
+    for label in merge_labels:
+        centroid = centroid_by_label[label][None, :]
+        distances = np.linalg.norm(kept_centroids - centroid, axis=1)
+        nearest_idx = int(np.argmin(distances))
+        merge_map[str(label)] = str(kept_labels_array[nearest_idx])
+
+    merged = labels.copy()
+    merged = merged.replace(merge_map)
+    return merged.astype(str), {"merge_map": merge_map}
+
+
+def apply_cluster_control(
+    labels: pd.Series,
+    embedding: np.ndarray,
+    config: Optional[Mapping[str, Any]],
+    print_results: bool = True,
+) -> Tuple[pd.Series, Dict[str, Any]]:
+    """Optionally control excessive query clusters after initial clustering.
+
+    This is intended mainly for HIPT/Image-only Leiden clustering in newer
+    Scanpy/Leiden environments where the neighborhood graph can fragment into
+    many connected components. It does not change the embedding; it only
+    replaces the initial cluster labels with a controlled label set.
+    """
+    if config is None:
+        return labels, {"enabled": False, "performed": False}
+
+    control = dict(config)
+    if "enabled" not in control and "enables" in control:
+        control["enabled"] = control["enables"]
+    control.pop("enables", None)
+
+    if not bool(control.get("enabled", True)):
+        return labels, {"enabled": False, "performed": False}
+
+    if not isinstance(labels, pd.Series):
+        labels = pd.Series(labels)
+    labels = labels.astype(str).copy()
+    initial_counts = labels.value_counts()
+    initial_n_clusters = int(initial_counts.shape[0])
+
+    max_clusters = control.get("max_clusters", None)
+    if max_clusters is None:
+        return labels, {
+            "enabled": True,
+            "performed": False,
+            "reason": "max_clusters_not_set",
+            "initial_n_clusters": initial_n_clusters,
+        }
+
+    max_clusters = int(max_clusters)
+    if max_clusters < 2:
+        raise ValueError("cluster_control['max_clusters'] must be >= 2.")
+    max_clusters = min(max_clusters, len(labels))
+
+    min_cluster_spots = int(control.get("min_cluster_spots", 1))
+    tiny_clusters = initial_counts[initial_counts < max(1, min_cluster_spots)]
+    needs_control = (
+        initial_n_clusters > max_clusters
+        or int(tiny_clusters.shape[0]) > 0
+    )
+
+    if not needs_control:
+        return labels, {
+            "enabled": True,
+            "performed": False,
+            "reason": "within_limits",
+            "initial_n_clusters": initial_n_clusters,
+            "max_clusters": max_clusters,
+            "min_cluster_spots": max(1, min_cluster_spots),
+        }
+
+    method = str(control.get("method", control.get("mode", "merge"))).lower()
+    random_state = int(control.get("random_state", 0))
+
+    if method in {"kmeans", "kmeans_fallback"}:
+        kmeans = KMeans(
+            n_clusters=max_clusters,
+            random_state=random_state,
+            n_init=int(control.get("n_init", 10)),
+        )
+        controlled = pd.Series(
+            kmeans.fit_predict(np.asarray(embedding)).astype(str),
+            index=labels.index,
+            name=labels.name,
+        )
+        merge_info: Dict[str, Any] = {"merge_map": {}}
+    elif method in {"merge", "centroid", "centroid_merge"}:
+        controlled, merge_info = _merge_excess_clusters_by_centroid(
+            labels=labels,
+            embedding=np.asarray(embedding),
+            max_clusters=max_clusters,
+            min_cluster_spots=min_cluster_spots,
+        )
+        controlled.index = labels.index
+        controlled.name = labels.name
+    else:
+        raise ValueError(
+            "cluster_control['method'] must be 'merge' or 'kmeans_fallback'."
+        )
+
+    if bool(control.get("relabel_dense", True)):
+        controlled = _dense_string_labels(controlled.to_numpy())
+        controlled.index = labels.index
+        controlled.name = labels.name
+
+    final_counts = controlled.value_counts()
+    info = {
+        "enabled": True,
+        "performed": True,
+        "method": method,
+        "initial_n_clusters": initial_n_clusters,
+        "final_n_clusters": int(final_counts.shape[0]),
+        "max_clusters": max_clusters,
+        "min_cluster_spots": max(1, min_cluster_spots),
+        "initial_cluster_sizes": initial_counts.astype(int).to_dict(),
+        "final_cluster_sizes": final_counts.astype(int).to_dict(),
+        **merge_info,
+    }
+
+    if print_results:
+        print("========== Cluster control results ==========")
+        print(
+            f"Controlled clusters from {initial_n_clusters} to "
+            f"{info['final_n_clusters']} (max={max_clusters}, method={method})."
+        )
+        print(final_counts)
+
+    return controlled.astype(str), info
 
 #===============================================================================================
 # Part 3. Clustering based on informative modalities and determined dimension reduction approach
@@ -531,6 +707,43 @@ def query_multi_modal_clustering(
             Number of neighbors used to build the Leiden neighborhood graph.
             Internally adjusted to at most ``n_obs - 1``.
 
+        ``neighbors_method`` : str or None, default="umap"
+            Neighbor graph backend forwarded to ``scanpy.pp.neighbors`` when
+            supported.
+
+        ``neighbors_metric`` : str, default="euclidean"
+            Distance metric forwarded to ``scanpy.pp.neighbors``.
+
+        ``leiden_flavor`` : {"leidenalg", "igraph"} or None, default="leidenalg"
+            Leiden backend forwarded to ``scanpy.tl.leiden`` when supported.
+            The default makes the historical Scanpy 1.9-style backend explicit.
+
+        ``leiden_directed`` : bool or None, default=None
+            Optional ``directed`` argument for ``scanpy.tl.leiden``. Use
+            ``False`` when intentionally using ``leiden_flavor="igraph"``.
+
+        ``leiden_n_iterations`` : int or None, default=None
+            Optional number of Leiden iterations.
+
+        ``cluster_control`` : dict or None, default=None
+            Optional post-clustering control for excessive Leiden clusters.
+            Useful when an Image/HIPT neighbor graph fragments into many
+            connected components. Lower-level query clustering requires
+            ``cluster_control["max_clusters"]`` to be an integer. Stage 6 also
+            supports hierarchy-aware string modes such as ``"auto"`` and
+            ``"legacy"``.
+
+            Recommended keys are:
+
+            - ``enabled``: bool, default=True when provided.
+            - ``max_clusters``: maximum final cluster count.
+            - ``method``: ``"merge"`` or ``"kmeans_fallback"``, default
+              ``"merge"``.
+            - ``min_cluster_spots``: merge clusters smaller than this size.
+
+            Advanced keys such as ``relabel_dense``, ``random_state``, and
+            ``n_init`` are available but usually do not need to be specified.
+
         ``random_state`` : int, default=0
             Random seed used for pca, KMeans, and Leiden.
 
@@ -631,6 +844,20 @@ def query_multi_modal_clustering(
         name=pred_key,
     )
 
+    cluster_control_config = final_config.get(
+        "cluster_control",
+        final_config.get(
+            "cluster_control_config",
+            final_config.get("hipt_cluster_control_config", None),
+        ),
+    )
+    labels, cluster_control_info = apply_cluster_control(
+        labels=labels,
+        embedding=integrated_embedding,
+        config=cluster_control_config,
+        print_results=print_results,
+    )
+
     final_config.update(cluster_info)
     final_config.update(
         {
@@ -638,6 +865,7 @@ def query_multi_modal_clustering(
             "query_section": query_section,
             "n_obs": int(base_adata.n_obs),
             "n_integrated_features": int(integrated_embedding.shape[1]),
+            "cluster_control": cluster_control_info,
         }
     )
 
