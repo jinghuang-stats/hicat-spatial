@@ -237,7 +237,7 @@ class HierTree:
 
         pos = _hierarchy_pos(graph, self.root_node)
 
-        plt.figure(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(10, 6))
         nx.draw(
             graph,
             pos,
@@ -245,11 +245,12 @@ class HierTree:
             with_labels=True,
             node_size=2500,
             font_size=8,
-            arrows=False
+            arrows=False,
+            ax=ax,
         )
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        ax.set_axis_off()
+        fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
+        plt.close(fig)
 
 
 def _hierarchy_pos(

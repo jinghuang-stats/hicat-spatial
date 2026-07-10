@@ -303,6 +303,66 @@ def _subset_adata_dic(
     return output
 
 
+def _normalize_enabled_config(config: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Return a config copy with the common ``enables`` typo normalized."""
+    if config is None:
+        return None
+    normalized = dict(config)
+    if "enabled" not in normalized and "enables" in normalized:
+        normalized["enabled"] = normalized["enables"]
+    normalized.pop("enables", None)
+    return normalized
+
+
+def _config_is_enabled(config: Optional[Mapping[str, Any]]) -> bool:
+    """Whether an optional config should be applied."""
+    if config is None:
+        return False
+    return bool(config.get("enabled", True))
+
+
+def _subset_query_dic_for_postprocessing(
+    *,
+    local_query_dic: Mapping[str, Any],
+    full_query_dic: Mapping[str, Any],
+    obs_names: List[str],
+    boundary_refinement_config: Optional[Mapping[str, Any]],
+    gene_subtyping_config: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Add modalities required by optional postprocessing without changing clustering.
+
+    ``local_query_dic`` contains only modalities selected for clustering. Optional
+    postprocessing may need additional modalities: Image for HIPT boundary
+    refinement and Gene for gene-based subtyping. Those additional modalities are
+    subset here only for postprocessing/assignment support.
+    """
+    output = dict(local_query_dic)
+    requested_obs = pd.Index(obs_names)
+
+    required_modalities = []
+    if _config_is_enabled(boundary_refinement_config):
+        required_modalities.append(("Image", "boundary_refinement_config"))
+    if _config_is_enabled(gene_subtyping_config):
+        required_modalities.append(("Gene", "gene_subtyping_config"))
+
+    for modality, reason in required_modalities:
+        if modality in output:
+            continue
+        if modality not in full_query_dic:
+            raise KeyError(f"{reason} requires query_adata_dic[{modality!r}].")
+        missing = requested_obs.difference(full_query_dic[modality].obs_names)
+        if len(missing) > 0:
+            raise ValueError(
+                f"{reason} requires query_adata_dic[{modality!r}] to contain "
+                "all active observations. "
+                f"Missing examples: {missing[:5].tolist()}"
+            )
+        output[modality] = full_query_dic[modality][obs_names, :].copy()
+
+    return output
+
+
 def _build_assignment_adata(
     local_scaled_dic: Mapping[str, Any],
     local_query_dic: Mapping[str, Any],
@@ -325,13 +385,20 @@ def _build_assignment_adata(
             assignment_adata.obs_names
         )[column].to_numpy()
 
-    raw_base = local_query_dic.get(base_modality)
-    if raw_base is not None:
-        for coordinate in (x_key, y_key):
-            if coordinate not in assignment_adata.obs and coordinate in raw_base.obs:
-                assignment_adata.obs[coordinate] = raw_base.obs.reindex(
-                    assignment_adata.obs_names
-                )[coordinate]
+    coordinate_sources = [base_modality] + [
+        modality for modality in local_query_dic if modality != base_modality
+    ]
+    for coordinate in (x_key, y_key):
+        if coordinate in assignment_adata.obs:
+            continue
+        for modality in coordinate_sources:
+            raw_base = local_query_dic.get(modality)
+            if raw_base is None or coordinate not in raw_base.obs:
+                continue
+            assignment_adata.obs[coordinate] = raw_base.obs.reindex(
+                assignment_adata.obs_names
+            )[coordinate]
+            break
 
     return assignment_adata
 
@@ -800,7 +867,12 @@ class HierarchicalTransferSession:
             print_results=self.print_results,
         )
 
-        round_gene_subtyping_config = deepcopy(self.gene_subtyping_config)
+        round_boundary_refinement_config = _normalize_enabled_config(
+            deepcopy(self.boundary_refinement_config)
+        )
+        round_gene_subtyping_config = _normalize_enabled_config(
+            deepcopy(self.gene_subtyping_config)
+        )
         if round_gene_subtyping_config is not None:
             round_gene_subtyping_config = dict(round_gene_subtyping_config)
             if round_gene_subtyping_config.get("enabled", True):
@@ -813,17 +885,24 @@ class HierarchicalTransferSession:
                 round_gene_subtyping_config["target_genes"] = target_genes
                 round_gene_subtyping_config["nontarget_genes"] = nontarget_genes
 
+        assignment_query_dic = local_query_dic
         if (
-            self.boundary_refinement_config is not None
-            or round_gene_subtyping_config is not None
+            _config_is_enabled(round_boundary_refinement_config)
+            or _config_is_enabled(round_gene_subtyping_config)
         ):
+            postprocess_query_dic = _subset_query_dic_for_postprocessing(
+                local_query_dic=local_query_dic,
+                full_query_dic=self.query_adata_dic,
+                obs_names=active_obs_names,
+                boundary_refinement_config=round_boundary_refinement_config,
+                gene_subtyping_config=round_gene_subtyping_config,
+            )
+            assignment_query_dic = postprocess_query_dic
             clustering_result = postprocess_query_clustering_result(
                 result=clustering_result,
-                query_adata_dic=local_query_dic,
+                query_adata_dic=postprocess_query_dic,
                 pred_key=self.cluster_key,
-                boundary_refinement_config=deepcopy(
-                    self.boundary_refinement_config
-                ),
+                boundary_refinement_config=round_boundary_refinement_config,
                 gene_subtyping_config=round_gene_subtyping_config,
                 print_results=self.print_results,
             )
@@ -844,7 +923,7 @@ class HierarchicalTransferSession:
         y_key = assignment_config.get("y_key", "y")
         assignment_adata = _build_assignment_adata(
             local_scaled_dic=local_scaled_dic,
-            local_query_dic=local_query_dic,
+            local_query_dic=assignment_query_dic,
             clustering_result=clustering_result,
             anchor_result=anchor_result,
             cluster_key=self.cluster_key,

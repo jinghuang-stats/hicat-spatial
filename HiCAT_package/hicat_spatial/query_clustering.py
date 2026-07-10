@@ -1553,12 +1553,19 @@ def postprocess_query_clustering_result(
     if pred_key not in adata_out.obs.columns:
         raise KeyError(f"Temporary postprocessing data is missing column: {pred_key}")
 
-    if boundary_refinement_config is not None and boundary_refinement_config.get("enabled", True):
+    if (
+        boundary_refinement_config is not None
+        and boundary_refinement_config.get(
+            "enabled",
+            boundary_refinement_config.get("enables", True),
+        )
+    ):
         if "Image" not in query_adata_dic:
             raise KeyError("boundary_refinement_config requires query_adata_dic['Image'].")
 
         bd_cfg = dict(boundary_refinement_config)
         bd_cfg.pop("enabled", None)
+        bd_cfg.pop("enables", None)
         x_key = bd_cfg.pop("x_key", "pixel_x")
         y_key = bd_cfg.pop("y_key", "pixel_y")
 
@@ -1598,12 +1605,19 @@ def postprocess_query_clustering_result(
         active_pred_key = bd_info["final_cluster_key"]
         postprocess_info["boundary_refinement"] = bd_info
 
-    if gene_subtyping_config is not None and gene_subtyping_config.get("enabled", True):
+    if (
+        gene_subtyping_config is not None
+        and gene_subtyping_config.get(
+            "enabled",
+            gene_subtyping_config.get("enables", True),
+        )
+    ):
         if "Gene" not in query_adata_dic:
             raise KeyError("gene_subtyping_config requires query_adata_dic['Gene'].")
 
         gene_cfg = dict(gene_subtyping_config)
         gene_cfg.pop("enabled", None)
+        gene_cfg.pop("enables", None)
         gene_cfg.setdefault("print_results", print_results)
 
         adata_out, subtype_info = subtype_clusters_by_gene_features(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from time import perf_counter
 from typing import Any, Dict, Mapping
 
@@ -53,6 +54,15 @@ class LabelTransferStageConfig:
         When postprocessing is enabled, save the copied Gene AnnData returned
         by ``save_label_transfer_outputs`` as
         ``output_dir/<query>/<scenario>/<query>_gene_postprocessed.h5ad``.
+    save_intermediate_figures : bool, default=False
+        If True, save one folder per committed hierarchy round with clustering,
+        anchor-detection, and label-assignment spatial plots.
+    intermediate_figure_parameters : dict, default={}
+        Optional settings for intermediate round plots. Common keys are
+        ``x_key``, ``y_key``, ``cat_color``, ``anchor_cat_color``, ``size``,
+        ``dpi``, ``invert_x``, ``invert_y``, ``base_modality``, ``subdir``,
+        ``plot_clustering``, ``plot_anchors``, ``plot_assignment``, and
+        ``save_tables``.
     """
 
     scenario: str
@@ -62,6 +72,8 @@ class LabelTransferStageConfig:
     postprocess: bool = False
     postprocess_parameters: Dict[str, Any] = field(default_factory=dict)
     save_postprocessed_h5ad: bool = True
+    save_intermediate_figures: bool = False
+    intermediate_figure_parameters: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -150,6 +162,273 @@ def _save_finalized_transfer_outputs(result, query_dir, query_section):
         adata_obj.write_h5ad(
             query_dir / f"{query_section}_{str(modality).lower()}_annotated.h5ad"
         )
+
+
+_DEFAULT_INTERMEDIATE_FIGURE_PARAMETERS = {
+    "subdir": "intermediate_round_figures",
+    "x_key": "pixel_x",
+    "y_key": "pixel_y",
+    "base_modality": None,
+    "cat_color": None,
+    "clustering_cat_color": None,
+    "assignment_cat_color": None,
+    "anchor_cat_color": ["#D1D1D1", "#FD2B5C"],
+    "size": 50,
+    "dpi": 100,
+    "invert_x": False,
+    "invert_y": True,
+    "plot_clustering": True,
+    "plot_anchors": True,
+    "plot_assignment": True,
+    "save_tables": True,
+}
+
+
+def _safe_path_component(value):
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("._")
+    return text or "unnamed"
+
+
+def _normalize_intermediate_figure_parameters(parameters):
+    config = dict(_DEFAULT_INTERMEDIATE_FIGURE_PARAMETERS)
+    if parameters is None:
+        return config
+    if not isinstance(parameters, Mapping):
+        raise TypeError("intermediate_figure_parameters must be a mapping or None.")
+
+    invalid_keys = set(parameters) - set(config)
+    if invalid_keys:
+        raise ValueError(
+            "Unknown intermediate_figure_parameters key(s): "
+            f"{sorted(invalid_keys)}. Allowed keys: {sorted(config)}."
+        )
+    config.update(dict(parameters))
+
+    config["size"] = float(config["size"])
+    if config["size"] <= 0:
+        raise ValueError("intermediate_figure_parameters['size'] must be positive.")
+    config["dpi"] = int(config["dpi"])
+    if config["dpi"] < 1:
+        raise ValueError("intermediate_figure_parameters['dpi'] must be at least 1.")
+    for key in ("invert_x", "invert_y", "plot_clustering", "plot_anchors", "plot_assignment", "save_tables"):
+        config[key] = bool(config[key])
+
+    return config
+
+
+def _plotting_base_adata(result, obs_names, config):
+    query_adata_dic = getattr(result, "query_adata_dic", {})
+    if not query_adata_dic:
+        return None, None
+
+    requested_obs = pd.Index(obs_names)
+    x_key = config["x_key"]
+    y_key = config["y_key"]
+    candidate_modalities = []
+    if config["base_modality"] is not None:
+        candidate_modalities.append(config["base_modality"])
+    candidate_modalities.extend(
+        modality for modality in query_adata_dic if modality not in candidate_modalities
+    )
+
+    for modality in candidate_modalities:
+        adata = query_adata_dic.get(modality)
+        if adata is None:
+            continue
+        if x_key not in adata.obs.columns or y_key not in adata.obs.columns:
+            continue
+        missing = requested_obs.difference(adata.obs_names)
+        if len(missing) > 0:
+            continue
+        return adata[list(requested_obs), :].copy(), modality
+
+    return None, None
+
+
+def _series_to_plot_obs(plot_adata, key, series, fill_value="missing"):
+    aligned = series.reindex(plot_adata.obs_names)
+    plot_adata.obs[key] = aligned.fillna(fill_value).astype(str)
+
+
+def _save_cat_plot(
+    *,
+    plot_adata,
+    color_key,
+    fig_title,
+    fig_path,
+    cat_color,
+    config,
+):
+    from ..visualization import cat_figure
+
+    cat_figure(
+        input_adata=plot_adata,
+        x_key=config["x_key"],
+        y_key=config["y_key"],
+        fig_title=fig_title,
+        fig_path=fig_path,
+        color_key=color_key,
+        cat_color=cat_color,
+        size=config["size"],
+        dpi=config["dpi"],
+        invert_x=config["invert_x"],
+        invert_y=config["invert_y"],
+    )
+
+
+def _save_intermediate_transfer_figures(
+    *,
+    result,
+    query_dir,
+    query_section,
+    figure_parameters,
+):
+    config = _normalize_intermediate_figure_parameters(figure_parameters)
+    round_results = getattr(result, "round_results", {})
+    if not round_results:
+        print(
+            f"[label_transfer] query={query_section!r}: no committed hierarchy "
+            "rounds available for intermediate figure saving."
+        )
+        return
+
+    output_root = ensure_output_dir(query_dir / config["subdir"])
+    default_cat_color = config["cat_color"]
+    clustering_cat_color = config["clustering_cat_color"] or default_cat_color
+    assignment_cat_color = config["assignment_cat_color"] or default_cat_color
+
+    for parent_node, round_result in round_results.items():
+        if getattr(round_result, "skipped", False):
+            continue
+
+        child_nodes = list(getattr(round_result, "child_nodes", []))
+        child_text = "_vs_".join(_safe_path_component(node) for node in child_nodes)
+        round_name = "_".join(
+            part
+            for part in [_safe_path_component(parent_node), child_text]
+            if part
+        )
+        round_dir = ensure_output_dir(output_root / round_name)
+
+        plot_adata, base_modality = _plotting_base_adata(
+            result,
+            getattr(round_result, "obs_names", []),
+            config,
+        )
+        if plot_adata is None:
+            print(
+                f"[label_transfer] query={query_section!r}, round={parent_node!r}: "
+                "skipped intermediate figures because no query AnnData contains "
+                f"coordinates {config['x_key']!r}/{config['y_key']!r} for all "
+                "round observations."
+            )
+            continue
+
+        if config["plot_clustering"] and round_result.clustering_result is not None:
+            try:
+                clustering_key = (
+                    round_result.clustering_result.labels.name
+                    or getattr(round_result, "clustering_config", {}).get(
+                        "pred_key", "query_cluster"
+                    )
+                )
+                _series_to_plot_obs(
+                    plot_adata,
+                    clustering_key,
+                    round_result.clustering_result.labels.astype(str),
+                )
+                _save_cat_plot(
+                    plot_adata=plot_adata,
+                    color_key=clustering_key,
+                    fig_title=(
+                        f"{query_section}: {parent_node} clustering "
+                        f"({base_modality} coordinates)"
+                    ),
+                    fig_path=round_dir / "01_clustering.png",
+                    cat_color=clustering_cat_color,
+                    config=config,
+                )
+            except Exception as exc:
+                print(
+                    f"[label_transfer] query={query_section!r}, round={parent_node!r}: "
+                    f"could not save clustering plot: {exc}"
+                )
+
+        if config["plot_anchors"] and round_result.anchor_result is not None:
+            anchor_df = round_result.anchor_result.anchor_df
+            for child_node in child_nodes:
+                try:
+                    anchor_key = round_result.anchor_result.get_anchor_key(child_node)
+                    if anchor_key not in anchor_df.columns:
+                        raise KeyError(anchor_key)
+                    _series_to_plot_obs(
+                        plot_adata,
+                        anchor_key,
+                        anchor_df[anchor_key].astype(str),
+                        fill_value="0",
+                    )
+                    _save_cat_plot(
+                        plot_adata=plot_adata,
+                        color_key=anchor_key,
+                        fig_title=f"{query_section}: {parent_node} {child_node} anchors",
+                        fig_path=round_dir / f"02_anchor_{_safe_path_component(child_node)}.png",
+                        cat_color=config["anchor_cat_color"],
+                        config=config,
+                    )
+                except Exception as exc:
+                    print(
+                        f"[label_transfer] query={query_section!r}, "
+                        f"round={parent_node!r}, child={child_node!r}: "
+                        f"could not save anchor plot: {exc}"
+                    )
+
+        if config["plot_assignment"] and round_result.assignment_result is not None:
+            try:
+                assignment_key = round_result.assignment_result.label_key
+                _series_to_plot_obs(
+                    plot_adata,
+                    assignment_key,
+                    round_result.assignment_result.labels.astype(str),
+                )
+                _save_cat_plot(
+                    plot_adata=plot_adata,
+                    color_key=assignment_key,
+                    fig_title=f"{query_section}: {parent_node} label assignment",
+                    fig_path=round_dir / "03_assignment.png",
+                    cat_color=assignment_cat_color,
+                    config=config,
+                )
+            except Exception as exc:
+                print(
+                    f"[label_transfer] query={query_section!r}, round={parent_node!r}: "
+                    f"could not save assignment plot: {exc}"
+                )
+
+        if config["save_tables"]:
+            try:
+                if round_result.clustering_result is not None:
+                    round_result.clustering_result.pred_df.to_csv(
+                        round_dir / "clustering_labels.csv"
+                    )
+                if round_result.anchor_result is not None:
+                    round_result.anchor_result.anchor_df.to_csv(
+                        round_dir / "anchor_df.csv"
+                    )
+                if round_result.assignment_result is not None:
+                    round_result.assignment_result.labels.rename(
+                        round_result.assignment_result.label_key
+                    ).to_csv(round_dir / "assignment_labels.csv")
+                    round_result.assignment_result.cross_table.to_csv(
+                        round_dir / "assignment_cross_table.csv"
+                    )
+                    round_result.assignment_result.adjusted_cross_table.to_csv(
+                        round_dir / "assignment_adjusted_cross_table.csv"
+                    )
+            except Exception as exc:
+                print(
+                    f"[label_transfer] query={query_section!r}, round={parent_node!r}: "
+                    f"could not save intermediate tables: {exc}"
+                )
 
 
 def _postprocess_finalized_transfer_result(
@@ -295,6 +574,13 @@ def run_label_transfer_stage(
         run_postprocess = job.pop("postprocess", config.postprocess)
         postprocess_parameters = dict(config.postprocess_parameters)
         postprocess_parameters.update(dict(job.pop("postprocess_parameters", {})))
+        save_intermediate_figures = job.pop(
+            "save_intermediate_figures", config.save_intermediate_figures
+        )
+        intermediate_figure_parameters = dict(config.intermediate_figure_parameters)
+        intermediate_figure_parameters.update(
+            dict(job.pop("intermediate_figure_parameters", {}))
+        )
         save_postprocessed_h5ad = job.pop(
             "save_postprocessed_h5ad", config.save_postprocessed_h5ad
         )
@@ -316,6 +602,13 @@ def run_label_transfer_stage(
 
             if _is_finalized_transfer_result(result):
                 _save_finalized_transfer_outputs(result, query_dir, query_section)
+                if save_intermediate_figures:
+                    _save_intermediate_transfer_figures(
+                        result=result,
+                        query_dir=query_dir,
+                        query_section=str(query_section),
+                        figure_parameters=intermediate_figure_parameters,
+                    )
                 if run_postprocess:
                     _postprocess_finalized_transfer_result(
                         result=result,
