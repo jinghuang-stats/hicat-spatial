@@ -23,11 +23,6 @@ def _filter_supported_kwargs(function, kwargs: Dict[str, Any]) -> Dict[str, Any]
         signature = inspect.signature(function)
     except (TypeError, ValueError):
         return kwargs
-    if any(
-        parameter.kind == inspect.Parameter.VAR_KEYWORD
-        for parameter in signature.parameters.values()
-    ):
-        return kwargs
     return {
         key: value
         for key, value in kwargs.items()

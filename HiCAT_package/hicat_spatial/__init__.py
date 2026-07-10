@@ -81,6 +81,18 @@ _PRIMARY_EXPORTS = {
         ".pipelines.step6_label_transfer",
         "LabelTransferStageResult",
     ),
+    "LabelTransferJobSetup": (
+        ".pipelines.step6_label_transfer",
+        "LabelTransferJobSetup",
+    ),
+    "infer_label_transfer_scenario": (
+        ".pipelines.step6_label_transfer",
+        "infer_label_transfer_scenario",
+    ),
+    "build_label_transfer_jobs": (
+        ".pipelines.step6_label_transfer",
+        "build_label_transfer_jobs",
+    ),
     "run_label_transfer_stage": (
         ".pipelines.step6_label_transfer",
         "run_label_transfer_stage",

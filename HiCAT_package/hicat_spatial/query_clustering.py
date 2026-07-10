@@ -1399,6 +1399,11 @@ def subtype_clusters_by_gene_features(
     clustering_method: str = "leiden",
     resolution: float = 0.5,
     n_neighbors: int = 15,
+    neighbors_method: Optional[str] = "umap",
+    neighbors_metric: Optional[str] = "euclidean",
+    leiden_flavor: Optional[str] = "leidenalg",
+    leiden_directed: Optional[bool] = None,
+    leiden_n_iterations: Optional[int] = None,
     n_clusters: Optional[int] = None,
     max_subtypes: int = 5,
     scale_gene_features: bool = True,
@@ -1452,6 +1457,19 @@ def subtype_clusters_by_gene_features(
     n_neighbors : int, default=15
         Number of neighbors used for Leiden graph construction. Internally
         adjusted to at most ``n_parent_spots - 1``.
+    neighbors_method : str or None, default="umap"
+        Neighbor graph backend passed to Scanpy when Leiden subtyping is used.
+        Set to ``None`` to use Scanpy's own default.
+    neighbors_metric : str or None, default="euclidean"
+        Distance metric passed to Scanpy when Leiden subtyping is used. Set to
+        ``None`` to use Scanpy's own default.
+    leiden_flavor : {"leidenalg", "igraph"} or None, default="leidenalg"
+        Leiden backend passed to Scanpy when supported. Set to ``None`` for
+        older Scanpy compatibility or to use Scanpy's own default.
+    leiden_directed : bool or None, default=None
+        Optional ``directed`` setting passed to Scanpy when supported.
+    leiden_n_iterations : int or None, default=None
+        Optional ``n_iterations`` setting passed to Scanpy when supported.
     n_clusters : int or None, default=None
         Number of KMeans clusters when ``clustering_method="kmeans"``.
     max_subtypes : int, default=5
@@ -1609,6 +1627,11 @@ def subtype_clusters_by_gene_features(
                     "clustering_method": method,
                     "resolution": float(res),
                     "n_neighbors": int(n_neighbors_use),
+                    "neighbors_method": neighbors_method,
+                    "neighbors_metric": neighbors_metric,
+                    "leiden_flavor": leiden_flavor,
+                    "leiden_directed": leiden_directed,
+                    "leiden_n_iterations": leiden_n_iterations,
                     "random_state": int(random_state),
                 }
                 subtype_pred, _ = cluster_integrated_embedding(

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 from time import perf_counter
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import pandas as pd
 
@@ -96,6 +96,397 @@ class LabelTransferStageResult:
 
     def get_result(self, query_section):
         return self.results_by_query[query_section]
+
+
+@dataclass
+class LabelTransferJobSetup:
+    """Automatically prepared Stage-6 jobs and inferred transfer scenario.
+
+    Attributes
+    ----------
+    scenario : {"single_ref_nn", "multi_ref_nn", "quantile"}
+        Scenario inferred from ``anchor_scenario`` and selected references.
+        Pass this to ``LabelTransferStageConfig(scenario=setup.scenario)``.
+    jobs : dict
+        Query-specific job dictionary accepted by ``run_label_transfer_stage``.
+    selected_refs_by_query : dict
+        Selected references used for every query.
+    scenario_by_query : dict
+        Scenario inferred independently for every query. This is mostly useful
+        for diagnostics because a single Stage-6 call requires one scenario.
+    """
+
+    scenario: str
+    jobs: Dict[str, Dict[str, Any]]
+    selected_refs_by_query: Dict[str, List[str]]
+    scenario_by_query: Dict[str, str]
+
+
+def infer_label_transfer_scenario(
+    anchor_scenario: str,
+    selected_refs: Sequence[str],
+) -> str:
+    """Infer the Stage-6 transfer scenario for one query.
+
+    Rules
+    -----
+    - ``anchor_scenario="nn_based"`` and one selected reference:
+      ``"single_ref_nn"``.
+    - ``anchor_scenario="nn_based"`` and multiple selected references:
+      ``"multi_ref_nn"``.
+    - ``anchor_scenario="quantile_based"``: ``"quantile"``.
+    """
+    selected_refs = list(selected_refs or [])
+    if len(selected_refs) == 0:
+        raise ValueError("selected_refs cannot be empty.")
+
+    scenario = str(anchor_scenario).lower().strip()
+    if scenario in {"nn_based", "nn", "nearest_neighbor", "nearest_neighbors"}:
+        return "single_ref_nn" if len(selected_refs) == 1 else "multi_ref_nn"
+    if scenario in {"quantile_based", "quantile"}:
+        return "quantile"
+    raise ValueError(
+        "anchor_scenario must be 'nn_based' or 'quantile_based'. "
+        f"Got {anchor_scenario!r}."
+    )
+
+
+def _default_gene_modality_dic(source, attribute_name: str) -> Dict[str, Any]:
+    value = getattr(source, attribute_name, None)
+    if value is None:
+        raise ValueError(
+            f"{attribute_name!r} is not available. Provide explicit "
+            "reference_adata_sca_by_modality/query_adata_sca_by_modality."
+        )
+    return {"Gene": value}
+
+
+def _query_sections_from_reference_result(reference_selection_result) -> List[str]:
+    selected = getattr(reference_selection_result, "selected_refs_dic", None)
+    if not isinstance(selected, Mapping) or len(selected) == 0:
+        raise ValueError(
+            "reference_selection_result must provide a non-empty "
+            "selected_refs_dic."
+        )
+    return list(selected)
+
+
+def _get_selected_refs(reference_selection_result, query_section: str) -> List[str]:
+    if hasattr(reference_selection_result, "get_selected_refs"):
+        selected = reference_selection_result.get_selected_refs(query_section)
+    else:
+        selected = reference_selection_result.selected_refs_dic[query_section]
+    selected = list(selected or [])
+    if len(selected) == 0:
+        raise ValueError(
+            f"No selected references are available for query {query_section!r}."
+        )
+    return selected
+
+
+def _section_adata(
+    section_adata_dic: Mapping[str, Any],
+    section: str,
+    label: str,
+):
+    if section not in section_adata_dic:
+        raise KeyError(
+            f"{label} is missing section {section!r}. "
+            f"Available sections: {list(section_adata_dic)}."
+        )
+    return section_adata_dic[section]
+
+
+def _modality_section_adata(
+    modality_section_dic: Mapping[str, Mapping[str, Any]],
+    modality: str,
+    section: str,
+    label: str,
+):
+    if modality not in modality_section_dic:
+        raise KeyError(
+            f"{label} is missing modality {modality!r}. "
+            f"Available modalities: {list(modality_section_dic)}."
+        )
+    return _section_adata(
+        modality_section_dic[modality],
+        section,
+        f"{label}[{modality!r}]",
+    )
+
+
+def _resolve_query_modalities(
+    query_adata_by_modality: Mapping[str, Mapping[str, Any]],
+    modalities: Optional[Sequence[str]],
+) -> List[str]:
+    if modalities is None:
+        modalities = list(query_adata_by_modality)
+    modalities = list(modalities)
+    if len(modalities) == 0:
+        raise ValueError("At least one query modality must be provided.")
+    return modalities
+
+
+def _feature_result_for_modality(feature_stage_result, query_section, modality):
+    if feature_stage_result is None:
+        return None
+    if hasattr(feature_stage_result, "get_modality_result"):
+        try:
+            return feature_stage_result.get_modality_result(query_section, modality)
+        except (KeyError, AttributeError):
+            return None
+    return None
+
+
+def _reference_section_guide_for_query(
+    reference_section_guides: Optional[Mapping[str, Any]],
+    query_section: str,
+    query_sections: Sequence[str],
+):
+    if reference_section_guides is None:
+        return None
+    if query_section in reference_section_guides and isinstance(
+        reference_section_guides[query_section],
+        Mapping,
+    ):
+        return reference_section_guides[query_section]
+    if any(query in reference_section_guides for query in query_sections):
+        return None
+    return reference_section_guides
+
+
+def build_label_transfer_jobs(
+    *,
+    reference_selection_result,
+    query_adata_by_modality: Mapping[str, Mapping[str, Any]],
+    feature_stage_result,
+    hier_tree,
+    clustering_configs: Mapping[str, Mapping[str, Any]],
+    anchor_scenario: str = "nn_based",
+    query_sections: Optional[Sequence[str]] = None,
+    reference_adata_sca_by_modality: Optional[
+        Mapping[str, Mapping[str, Any]]
+    ] = None,
+    query_adata_sca_by_modality: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    merged_ref_adata_sca_by_modality: Optional[Mapping[str, Any]] = None,
+    modalities: Optional[Sequence[str]] = None,
+    anchor_modalities: Sequence[str] = ("Gene",),
+    reference_section_guides: Optional[Mapping[str, Any]] = None,
+    strict_reference_guide: bool = True,
+) -> LabelTransferJobSetup:
+    """Build Stage-6 jobs from previous stage results.
+
+    This helper removes most scenario-specific boilerplate while keeping the
+    final Stage-6 call explicit. It infers the transfer scenario from
+    ``anchor_scenario`` and the selected references from Stage 3.
+
+    Parameters
+    ----------
+    reference_selection_result
+        Stage-3 result. Must provide ``get_selected_refs(query_section)`` or
+        ``selected_refs_dic``. If scaled dictionaries are not provided
+        explicitly, ``ref_adata_dic`` and ``qry_adata_dic`` are used as the
+        Gene anchor dictionaries.
+    query_adata_by_modality
+        Modality-first preprocessed query objects used for query clustering and
+        final outputs, for example ``preprocess_result.query["enhanced"]``.
+    feature_stage_result
+        Stage-4 result with ``get_modality_result(query, modality)``.
+    hier_tree
+        Stage-2 hierarchy tree.
+    clustering_configs
+        ``{query_section: clustering_config}``, usually built from Stage 5.
+    anchor_scenario
+        ``"nn_based"`` or ``"quantile_based"``.
+    query_sections
+        Optional query subset. Defaults to all queries in Stage-3 result.
+    reference_adata_sca_by_modality, query_adata_sca_by_modality
+        Scaled anchor dictionaries in modality-first format:
+        ``{modality: {section: AnnData}}``. Defaults to Gene dictionaries
+        stored in the Stage-3 result.
+    merged_ref_adata_sca_by_modality
+        Required for ``anchor_scenario="quantile_based"``. Format:
+        ``{modality: merged_reference_AnnData}``.
+    modalities
+        Modalities copied into ``query_adata_dic``. Defaults to every modality
+        in ``query_adata_by_modality``.
+    anchor_modalities
+        Modalities used for anchors. Default is ``("Gene",)``.
+    reference_section_guides
+        Optional multi-reference NN guide. Provide either one guide shared by
+        all queries, or ``{query_section: guide}``.
+    strict_reference_guide
+        Forwarded to multi-reference NN jobs when a guide is provided.
+
+    Returns
+    -------
+    LabelTransferJobSetup
+        ``setup.scenario`` and ``setup.jobs`` can be passed directly to
+        ``LabelTransferStageConfig`` and ``run_label_transfer_stage``.
+    """
+    if query_sections is None:
+        query_sections = _query_sections_from_reference_result(
+            reference_selection_result
+        )
+    query_sections = list(query_sections)
+    if len(query_sections) == 0:
+        raise ValueError("query_sections cannot be empty.")
+
+    if reference_adata_sca_by_modality is None:
+        reference_adata_sca_by_modality = _default_gene_modality_dic(
+            reference_selection_result,
+            "ref_adata_dic",
+        )
+    if query_adata_sca_by_modality is None:
+        query_adata_sca_by_modality = _default_gene_modality_dic(
+            reference_selection_result,
+            "qry_adata_dic",
+        )
+
+    query_modalities = _resolve_query_modalities(
+        query_adata_by_modality,
+        modalities,
+    )
+    anchor_modalities = list(anchor_modalities)
+    if len(anchor_modalities) == 0:
+        raise ValueError("anchor_modalities cannot be empty.")
+
+    selected_refs_by_query: Dict[str, List[str]] = {}
+    scenario_by_query: Dict[str, str] = {}
+    for query_section in query_sections:
+        selected_refs = _get_selected_refs(reference_selection_result, query_section)
+        selected_refs_by_query[query_section] = selected_refs
+        scenario_by_query[query_section] = infer_label_transfer_scenario(
+            anchor_scenario,
+            selected_refs,
+        )
+
+    scenarios = sorted(set(scenario_by_query.values()))
+    if len(scenarios) != 1:
+        raise ValueError(
+            "A single run_label_transfer_stage call requires one scenario, but "
+            f"the selected references imply mixed scenarios: {scenario_by_query}. "
+            "Run queries with one selected reference separately from queries "
+            "with multiple selected references, or adjust Stage-3 selection."
+        )
+    scenario = scenarios[0]
+    if scenario == "quantile" and merged_ref_adata_sca_by_modality is None:
+        raise ValueError(
+            "merged_ref_adata_sca_by_modality is required when "
+            "anchor_scenario='quantile_based'."
+        )
+
+    jobs: Dict[str, Dict[str, Any]] = {}
+    for query_section in query_sections:
+        selected_refs = selected_refs_by_query[query_section]
+        query_adata_dic = {
+            modality: _modality_section_adata(
+                query_adata_by_modality,
+                modality,
+                query_section,
+                "query_adata_by_modality",
+            )
+            for modality in query_modalities
+        }
+        query_adata_sca_dic = {
+            modality: _modality_section_adata(
+                query_adata_sca_by_modality,
+                modality,
+                query_section,
+                "query_adata_sca_by_modality",
+            )
+            for modality in anchor_modalities
+        }
+        common_job = {
+            "query_adata_dic": query_adata_dic,
+            "query_adata_sca_dic": query_adata_sca_dic,
+            "hier_tree": hier_tree,
+            "clustering_config": _section_adata(
+                clustering_configs,
+                query_section,
+                "clustering_configs",
+            ),
+        }
+
+        for modality in query_modalities:
+            result = _feature_result_for_modality(
+                feature_stage_result,
+                query_section,
+                modality,
+            )
+            if result is not None:
+                common_job[f"{modality.lower()}_feature_results"] = result
+
+        if scenario == "single_ref_nn":
+            ref_section = selected_refs[0]
+            job = {
+                "ref_section": ref_section,
+                "ref_adata_sca_dic": {
+                    modality: _modality_section_adata(
+                        reference_adata_sca_by_modality,
+                        modality,
+                        ref_section,
+                        "reference_adata_sca_by_modality",
+                    )
+                    for modality in anchor_modalities
+                },
+                **common_job,
+            }
+        elif scenario == "multi_ref_nn":
+            job = {
+                "ref_section_list": selected_refs,
+                "ref_adata_sca_dic": {
+                    ref_section: {
+                        modality: _modality_section_adata(
+                            reference_adata_sca_by_modality,
+                            modality,
+                            ref_section,
+                            "reference_adata_sca_by_modality",
+                        )
+                        for modality in anchor_modalities
+                    }
+                    for ref_section in selected_refs
+                },
+                **common_job,
+            }
+            guide = _reference_section_guide_for_query(
+                reference_section_guides,
+                query_section,
+                query_sections,
+            )
+            if guide is not None:
+                job["reference_section_guide"] = guide
+                job["strict_reference_guide"] = bool(strict_reference_guide)
+        else:
+            job = {
+                "ref_section_list": selected_refs,
+                "ref_adata_sca_dic": {
+                    modality: {
+                        ref_section: _modality_section_adata(
+                            reference_adata_sca_by_modality,
+                            modality,
+                            ref_section,
+                            "reference_adata_sca_by_modality",
+                        )
+                        for ref_section in selected_refs
+                    }
+                    for modality in anchor_modalities
+                },
+                "merged_ref_adata_sca_dic": {
+                    modality: merged_ref_adata_sca_by_modality[modality]
+                    for modality in anchor_modalities
+                },
+                **common_job,
+            }
+
+        jobs[query_section] = job
+
+    return LabelTransferJobSetup(
+        scenario=scenario,
+        jobs=jobs,
+        selected_refs_by_query=selected_refs_by_query,
+        scenario_by_query=scenario_by_query,
+    )
 
 
 def _resolve_transfer_function(scenario):
@@ -674,7 +1065,10 @@ def run_label_transfer_stage(
 
 
 __all__ = [
+    "LabelTransferJobSetup",
     "LabelTransferStageConfig",
     "LabelTransferStageResult",
+    "build_label_transfer_jobs",
+    "infer_label_transfer_scenario",
     "run_label_transfer_stage",
 ]
