@@ -236,22 +236,23 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 from hicat_spatial import (
-    ClusteringConfigStageConfig,
-    HeterogeneityStageConfig,
-    HierarchicalFeatureStageConfig,
-    LabelTransferStageConfig,
     PreprocessConfig,
-    ReferenceSelectionStageConfig,
     TreeInferenceStageConfig,
-    build_label_transfer_jobs,
-    construct_tree_reference_adata,
-    run_clustering_config_stage,
-    run_heterogeneity_stage,
-    run_hierarchical_feature_stage,
-    run_label_transfer_stage,
+    ReferenceSelectionStageConfig,
+    SHARED_REFERENCE_KEY,
+    HierarchicalFeatureStageConfig,
+    ClusteringConfigStageConfig,
+    LabelTransferStageConfig,
+    HeterogeneityStageConfig,
     run_preprocessing_pipeline,
-    run_reference_selection_stage,
+    construct_tree_reference_adata,
     run_tree_inference_stage,
+    run_reference_selection_stage,
+    run_hierarchical_feature_stage,
+    run_clustering_config_stage,
+    build_label_transfer_jobs,
+    run_label_transfer_stage,
+    run_heterogeneity_stage,
 )
 ```
 
@@ -572,15 +573,15 @@ if "Image" in avail_modalities:
 Estimate features using the entire reference pool:
 
 ```python
-all_refs_dic = {
-    query_section: reference_sections
-    for query_section in query_sections
+shared_result_key = SHARED_REFERENCE_KEY
+shared_selected_refs_dic = {
+    shared_result_key: reference_sections,
 }
 
 feature_result = run_hierarchical_feature_stage(
     ref_adata_by_modality=preprocess_result.reference[resolution_level],
     hier_tree=hier_tree,
-    selected_refs_dic=all_refs_dic,
+    selected_refs_dic=shared_selected_refs_dic,
     config=HierarchicalFeatureStageConfig(
         output_dir=analysis_root / "04_hierarchical_features",
         anchor_scenario=anchor_scenario,
@@ -590,7 +591,7 @@ feature_result = run_hierarchical_feature_stage(
 )
 ```
 
-Users can also use the query-specify reference sets selected in **Stage 3** by replacing `all_refs_dic` with `selected_refs_dic`.
+Users can also use the query-specify reference sets selected in **Stage 3** by replacing `shared_selected_refs_dic` with `selected_refs_dic`.
 
 
 ---
@@ -676,15 +677,13 @@ Boundary-cluster correction is recommended when HIPT image features are used to 
 Inspect the inferred configuration for each query section:
 
 ```python
-for query_section in query_sections:
-    one_result = embedding_result.get_result(query_section)
+one_result = embedding_result.get_result(shared_result_key)
 
-    print(f"Query section: {query_section}")
-    print("Selected modalities:", one_result.selected_modalities)
-    print("Dimensionality-reduction method:", one_result.dim_reduction_method)
-    print("Average modality ARI:", one_result.modality_avg_ari)
-    print(one_result.dim_reduction_summary_df)
-    print(one_result.summary())
+print("Selected modalities:", one_result.selected_modalities)
+print("Dimensionality-reduction method:", one_result.dim_reduction_method)
+print("Average modality ARI:", one_result.modality_avg_ari)
+print(one_result.dim_reduction_summary_df)
+print(one_result.summary())
 ```
 
 ### 8.3 Complete the clustering configuration
@@ -694,16 +693,17 @@ HiCAT supports Leiden and K-means clustering.
 #### Option A: Leiden clustering
 
 ```python
+shared_clustering_config = embedding_result.to_clustering_config(
+    query_section=shared_result_key,
+    clustering_method="leiden",
+    resolution=0.2,
+    n_neighbors=10,
+    random_state=random_state,
+    cluster_control={"enabled": False},
+)
+
 clustering_configs = {
-    query_section: embedding_result.to_clustering_config(
-        query_section=query_section,
-        clustering_method="leiden",
-        resolution=0.2,
-        n_neighbors=10,
-        random_state=random_state,
-        cluster_control={"enabled": False},
-    )
-    for query_section in query_sections
+    shared_result_key: shared_clustering_config,
 }
 ```
 
@@ -728,16 +728,17 @@ cluster_control = {
 K-means is recommended for Visium HD data when computational efficiency and memory usage are priorities.
 
 ```python
+shared_clustering_config = embedding_result.to_clustering_config(
+    query_section=shared_result_key,
+    clustering_method="kmeans",
+    n_clusters="auto",
+    min_clusters=4,
+    random_state=random_state,
+    cluster_control={"enabled": False},
+)
+
 clustering_configs = {
-    query_section: embedding_result.to_clustering_config(
-        query_section=query_section,
-        clustering_method="kmeans",
-        n_clusters="auto",
-        min_clusters=4,
-        random_state=random_state,
-        cluster_control={"enabled": False},
-    )
-    for query_section in query_sections
+    shared_result_key: shared_clustering_config,
 }
 ```
 
@@ -765,6 +766,12 @@ Each transfer scenario requires a different reference-data structure. The helper
 - For cross-study or cross-technology transfer, use `anchor_scenario="quantile_based"`, which produces the `quantile` transfer scenario.
 
 ```python
+anchor_modalities = [
+    modality
+    for modality in avail_modalities
+    if modality in ("Gene", "Protein")
+]
+
 job_setup = build_label_transfer_jobs(
     reference_selection_result=reference_result,
     query_adata_by_modality=preprocess_result.query[resolution_level],
@@ -773,6 +780,8 @@ job_setup = build_label_transfer_jobs(
     clustering_configs=clustering_configs,
     anchor_scenario=anchor_scenario,
     query_sections=query_sections,
+    anchor_modalities=anchor_modalities,
+    shared_result_key=shared_result_key,
 )
 
 print("Transfer scenario:", job_setup.scenario)
@@ -823,11 +832,7 @@ gene_subtyping_config = {
 
 ```python
 anchor_config = {
-    "modalities": [
-        modality
-        for modality in avail_modalities
-        if modality in {"Gene", "Protein"}
-    ],
+    "modalities": anchor_modalities,
     "modality_aggregate_mode": "union",
     "knn": 5,
     "max_missing_sections": 1,
@@ -960,6 +965,7 @@ hetero_score_configs = {
     "region_gene_num": 10,
     "selection_method": "threshold",
     "hetero_threshold": 0.5,
+    "low_exp_thres": 0.02, # set as None to skip low-expression filtering
     "n_perm": 100,
 }
 
@@ -972,17 +978,18 @@ hetero_subtype_configs = {
     "leiden_res": 0.01,
     "n_neighbors": 15,
     "min_fold_change": 1.1,
-    "min_in_out_group_ratio": 1.0,
+    "min_in_out_group_ratio": np.nextafter(1.0, np.inf), # close to > 1
     "min_in_group_fraction": 0.5,
     "pvals_adj": 0.05,
     "overlap_cutoff": 1,
     "section_gene_num": 15,
+    "set_shared_clusters_num": 2,
     "merged_gene_num": 15,
     "individual_gene_num": 35,
     "random_state": random_state,
 }
 
-fig_paras = {
+hetero_fig_paras = {
     "cat_color": cat_color,
     "cnt_color": cnt_color,
     "x_key": x_key,
@@ -999,14 +1006,17 @@ fig_paras = {
 | `region_gene_num` | Maximum number of region-specific marker genes selected per tissue region and reference section | Heterogeneity scoring |
 | `selection_method` | Use `"threshold"` to retain regions with scores at or above `hetero_threshold`, or `"top_k"` to retain the highest-ranked regions | Heterogeneous-region selection |
 | `hetero_threshold` | Heterogeneity-score cutoff used when `selection_method="threshold"` | Heterogeneous-region selection |
+| `low_exp_thres` | Optional low-expression filtering threshold before heterogeneity analysis. If set, genes detected in fewer than this fraction of observations in a reference section are removed. Use None to skip filtering. | Pre-filtering before heterogeneity scoring and subtype analysis
 | `n_perm` | Number of permutations used to compute permutation-adjusted silhouette or stability scores | Heterogeneity scoring |
 | `min_region_spots` | Minimum number of observations required for a tissue region to be evaluated within a reference section | Scoring and subtype analysis |
 | `pcs_num` | Number of principal components used before subtype clustering | Subtype discovery |
 | `min_cluster_fraction` | Minimum subtype-cluster proportion required for marker-gene selection | Subtype marker selection |
 | `overlap_cutoff` | Minimum number of reference sections in which a section-level subtype marker must appear | Shared subtype marker selection |
 | `section_gene_num` | Maximum number of subtype markers selected per cluster within each reference section | Section-level marker selection |
+| `set_shared_clusters_num` | Optional fixed number of shared heterogeneous subtype clusters. If `None`, HiCAT estimates the number of shared subtype clusters automatically from the merged heterogeneous-region data. If an integer is provided, that value is used directly for shared subtype clustering. | Shared subtype discovery |
 | `merged_gene_num` | Maximum number of subtype markers selected per shared subtype from merged references | Shared marker selection |
 | `individual_gene_num` | Maximum number of subtype markers selected per shared subtype and reference section before overlap filtering | Per-section marker selection |
+
 
 ### 10.2 Run heterogeneity inference
 
@@ -1021,7 +1031,7 @@ heterogeneity_result = run_heterogeneity_stage(
             "sample_key": sample_key,
             **hetero_score_configs,
             **hetero_subtype_configs,
-            **fig_paras,
+            **hetero_fig_paras,
             "print_results": True,
         },
     ),

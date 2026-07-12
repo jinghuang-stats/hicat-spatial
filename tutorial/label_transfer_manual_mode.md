@@ -1,8 +1,8 @@
 ### 9.4 Run label transfer (optional `"manual"` mode)
 
-- Manual mode allows users to inspect clustering, anchor detection, and label assignment before committing each hierarchy split.
+- Manual mode allows users to inspect clustering, anchor detection, and assignment for each hierarchy split before committing.
 
-- In manual mode, `run_label_transfer_stage()` returns a session for each query section rather than a finalized transfer result. Final CSV, H5AD, and postprocessing outputs are created only after converting the session with `session.to_result()` and saving the outputs.
+- In manual mode, `run_label_transfer_stage()` returns a session object for each query section rather than a finalized transfer result. Final CSV and postprocessing outputs are created only after converting the session with `session.to_result()` and saving the outputs. Full `.h5ad` files are not saved by default.
 
 #### 9.4.1 Initialize a manual session
 
@@ -29,8 +29,8 @@ manual_stage_result = run_label_transfer_stage(
         },
         save_intermediate_figures=True,
         intermediate_figure_parameters=intermediate_figure_paras,
-        postprocess=True,
-        postprocess_parameters=postprocess_paras,
+        postprocess=False,
+        save_result_objects=False,
     ),
 )
 
@@ -93,17 +93,32 @@ while session.pending_internal_nodes():
 manual_result = session.to_result(mode="manual")
 
 print(manual_result.final_labels.value_counts(dropna=False))
-print("Complete:", manual_result.is_complete)
+print("Complete:", manual_result.is_complete())
 print("Pending nodes:", manual_result.pending_nodes)
+
+manual_output_dir = analysis_root / "06_label_transfer_manual" / query_section
+manual_output_dir.mkdir(parents=True, exist_ok=True)
+
+manual_result.final_labels.to_csv(
+    manual_output_dir / "final_labels.csv",
+    index=True,
+)
+
+manual_result.round_summary().to_csv(
+    manual_output_dir / "round_summary.csv",
+    index=False,
+)
 ```
+
+Save final manual-mode plots and tables. This writes `predicted_obs.csv` and annotation plots. 
 
 ```python
 from hicat_spatial.label_transfer import save_label_transfer_outputs
 
-manual_gene_postprocessed = save_label_transfer_outputs(
+manual_gene_with_predictions = save_label_transfer_outputs(
     transfer_result=manual_result,
     transfer_scenario=job_setup.scenario,
-    output_dir=analysis_root / "06_label_transfer",
+    output_dir=analysis_root / "06_label_transfer_manual",
     qry_section=query_section,
     **postprocess_paras,
 )
