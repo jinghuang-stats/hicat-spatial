@@ -925,7 +925,6 @@ transfer_stage_result = run_label_transfer_stage(
 
 | Parameter | Description |
 |---|---|
-| `mode` | Use `"auto"` for complete hierarchy traversal or `"manual"` for round-by-round inspection |
 | `min_node_prop` | Minimum proportion of query observations required for a child node to remain eligible for further splitting |
 | `min_node_spots` | Minimum number of query observations required for a child node to remain eligible for further splitting |
 | `copy` | Whether to copy intermediate AnnData objects; set to `False` when memory is limited |
