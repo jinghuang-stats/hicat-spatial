@@ -1,4 +1,4 @@
-### 9.4 Run label transfer (optional `"manual"`` mode)
+### 9.4 Run label transfer (optional `"manual"` mode)
 
 - Manual mode allows users to inspect clustering, anchor detection, and label assignment before committing each hierarchy split.
 
