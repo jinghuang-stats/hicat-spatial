@@ -776,7 +776,7 @@ print("Transfer scenario:", job_setup.scenario)
 HiCAT provides two execution modes:
 
 - `"auto"`: automatically traverses the hierarchy from the root to eligible leaf nodes.
-- `"manual"`: returns a session that allows each hierarchy round to be inspected, adjusted, and committed separately. We also provide a step-by-step guide for [manual mode]().
+- `"manual"`: returns a session that allows each hierarchy round to be inspected, adjusted, and committed separately. We also provide a step-by-step guide for [manual mode](https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial/label_transfer_manual_mode.md).
 
 ### 9.2 Define transfer parameters
 
