@@ -223,9 +223,14 @@ For Spatial Transcriptomics datasets with approximately 55-µm-radius spots, HiC
 Import the packages and HiCAT functions used throughout the tutorial:
 
 ```python
+import os
+import warnings
+warnings.filterwarnings('ignore')
 import gc
-
+import numpy as np
+import pandas as pd
 import matplotlib.colors as clr
+
 from PIL import Image
 
 Image.MAX_IMAGE_PIXELS = None
