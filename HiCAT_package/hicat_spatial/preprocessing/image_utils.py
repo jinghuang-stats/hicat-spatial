@@ -281,7 +281,7 @@ def visualize_img_clusters(
                     fig_path=output_dir / f"spot_image_features_kmeans_{k}.png",
                     color_key=f"kmeans_{k}",
                     cat_color=cat_color,
-                    size=plot_spot_size,
+                    fig_size=plot_spot_size,
                     dpi=dpi,
                     invert_x=invert_x,
                     invert_y=invert_y,

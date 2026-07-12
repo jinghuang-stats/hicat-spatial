@@ -157,10 +157,26 @@ class PreprocessConfig:
     zero_replacement_scale : float, default=0.01
         Maximum replacement value relative to the smallest positive feature
         value.
+    reference_molecular_kwargs, query_molecular_kwargs : dict, default={}
+        Optional cohort-specific overrides for molecular preprocessing. Missing
+        keys follow the global values above. Supported keys are
+        ``target_sum``, ``log1p``, ``uppercase_features``,
+        ``protein_replace_zeros``, and ``zero_replacement_scale``. This is
+        useful when loading a shared reference that is already preprocessed
+        while normalizing/log-transforming a raw query.
     random_state : int, default=0
         Seed used by zero replacement and forwarded stochastic operations.
     gene_enhancement, protein_enhancement : bool, default=False
         Generate dense pseudo-spot molecular data from H&E and observed spots.
+        These are global defaults for both reference and query cohorts.
+    reference_gene_enhancement, query_gene_enhancement : bool or None, default=None
+        Optional cohort-specific Gene enhancement overrides. ``None`` follows
+        ``gene_enhancement``. Use ``reference_gene_enhancement=False`` and
+        ``query_gene_enhancement=True`` when loading a shared preprocessed
+        reference but enhancing a raw query.
+    reference_protein_enhancement, query_protein_enhancement : bool or None, default=None
+        Optional cohort-specific Protein enhancement overrides. ``None`` follows
+        ``protein_enhancement``.
     enhancement_kwargs : dict, default={}
         Additional arguments for ``enhance_gene_expression``, such as
         ``resolution``, ``contour_method``, ``n_neighbors``,
@@ -175,10 +191,15 @@ class PreprocessConfig:
         Additional arguments for ``extract_scribble_labels_pipeline``, such as
         ``color_tolerance``, ``selected_labels_dic``, or plotting settings.
     image_feature_mode : {"extract", "load"}, default="extract"
-        How to create Image modality objects. ``"extract"`` runs UNI/HIPT from
-        raw H&E images. ``"load"`` reads pre-extracted image-feature ``.h5ad``
-        files from ``data_dir`` and saves them into the standard preprocessing
-        output folders.
+        Global default for how to create Image modality objects. ``"extract"``
+        runs UNI/HIPT from raw H&E images. ``"load"`` reads pre-extracted
+        image-feature ``.h5ad`` files from ``data_dir`` and saves them into the
+        standard preprocessing output folders.
+    reference_image_feature_mode, query_image_feature_mode : {"extract", "load"} or None
+        Optional cohort-specific Image feature mode overrides. ``None`` follows
+        ``image_feature_mode``. Use ``reference_image_feature_mode="load"`` and
+        ``query_image_feature_mode="extract"`` for the shared-reference plus
+        raw-query tutorial scenario.
     image_feature_kwargs : dict, default={}
         Arguments for ``extract_image_features`` when
         ``image_feature_mode="extract"``, including ``model``,
@@ -241,13 +262,21 @@ class PreprocessConfig:
     uppercase_features: bool = True
     protein_replace_zeros: bool = False
     zero_replacement_scale: float = 0.01
+    reference_molecular_kwargs: Dict[str, Any] = field(default_factory=dict)
+    query_molecular_kwargs: Dict[str, Any] = field(default_factory=dict)
     random_state: int = 0
     gene_enhancement: bool = False
     protein_enhancement: bool = False
+    reference_gene_enhancement: Optional[bool] = None
+    query_gene_enhancement: Optional[bool] = None
+    reference_protein_enhancement: Optional[bool] = None
+    query_protein_enhancement: Optional[bool] = None
     enhancement_kwargs: Dict[str, Any] = field(default_factory=dict)
     label_color_dict: Optional[Mapping[str, Tuple[int, int, int]]] = None
     scribble_kwargs: Dict[str, Any] = field(default_factory=dict)
     image_feature_mode: str = "extract"
+    reference_image_feature_mode: Optional[str] = None
+    query_image_feature_mode: Optional[str] = None
     image_feature_kwargs: Dict[str, Any] = field(default_factory=dict)
     image_feature_levels: str | Sequence[str] = "auto"
     image_feature_level_kwargs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
@@ -340,6 +369,92 @@ def _canonical_modalities(modalities: Sequence[str]) -> Tuple[str, ...]:
     return tuple(name for name in _MODALITY_ORDER if name.lower() in requested)
 
 
+def _cohort_option(config, cohort: str, base_name: str):
+    """Return a cohort-specific config value, falling back to the global value."""
+    cohort = str(cohort).lower()
+    if cohort not in {"reference", "query"}:
+        raise ValueError("cohort must be 'reference' or 'query'.")
+    override = getattr(config, f"{cohort}_{base_name}")
+    if override is not None:
+        return override
+    return getattr(config, base_name)
+
+
+def _cohort_image_feature_mode(config, cohort: str) -> str:
+    """Return normalized Image feature mode for one cohort."""
+    mode = str(_cohort_option(config, cohort, "image_feature_mode")).lower()
+    if mode not in {"extract", "load"}:
+        raise ValueError(
+            f"{cohort}_image_feature_mode must be 'extract', 'load', or None."
+        )
+    return mode
+
+
+def _cohort_enhancement_enabled(config, cohort: str, modality: str) -> bool:
+    """Return whether Gene/Protein enhancement is enabled for one cohort."""
+    modality = str(modality)
+    if modality == "Gene":
+        return bool(_cohort_option(config, cohort, "gene_enhancement"))
+    if modality == "Protein":
+        return bool(_cohort_option(config, cohort, "protein_enhancement"))
+    raise ValueError("modality must be 'Gene' or 'Protein'.")
+
+
+_MOLECULAR_OVERRIDE_KEYS = {
+    "target_sum",
+    "log1p",
+    "uppercase_features",
+    "protein_replace_zeros",
+    "zero_replacement_scale",
+}
+
+
+def _cohort_molecular_options(config, cohort: str) -> Dict[str, Any]:
+    """Return molecular preprocessing options for one cohort."""
+    cohort = str(cohort).lower()
+    if cohort not in {"reference", "query"}:
+        raise ValueError("cohort must be 'reference' or 'query'.")
+    overrides = dict(getattr(config, f"{cohort}_molecular_kwargs") or {})
+    unknown = set(overrides) - _MOLECULAR_OVERRIDE_KEYS
+    if unknown:
+        raise ValueError(
+            f"{cohort}_molecular_kwargs contains unsupported keys: "
+            f"{sorted(unknown)}. Supported keys are "
+            f"{sorted(_MOLECULAR_OVERRIDE_KEYS)}."
+        )
+    options = {
+        "target_sum": config.target_sum,
+        "log1p": config.log1p,
+        "uppercase_features": config.uppercase_features,
+        "protein_replace_zeros": config.protein_replace_zeros,
+        "zero_replacement_scale": config.zero_replacement_scale,
+    }
+    options.update(overrides)
+    return options
+
+
+def _cohort_extracts_image_features(config, cohort: str, modalities) -> bool:
+    return (
+        "Image" in modalities
+        and _cohort_image_feature_mode(config, cohort) == "extract"
+    )
+
+
+def _cohort_loads_image_features(config, cohort: str, modalities) -> bool:
+    return (
+        "Image" in modalities
+        and _cohort_image_feature_mode(config, cohort) == "load"
+    )
+
+
+def _cohort_needs_raw_images(config, cohort: str, modalities) -> bool:
+    return (
+        _cohort_extracts_image_features(config, cohort, modalities)
+        or _cohort_enhancement_enabled(config, cohort, "Gene")
+        or _cohort_enhancement_enabled(config, cohort, "Protein")
+    )
+
+
 def _normalize_image_feature_levels(levels) -> Tuple[str, ...] | None:
     """Return explicit image-feature levels, or None for auto mode."""
     if isinstance(levels, str):
@@ -412,7 +527,7 @@ def _has_coordinate_source(result, section, level) -> bool:
     return True
 
 
-def _resolved_image_feature_levels(config, result, section) -> Tuple[str, ...]:
+def _resolved_image_feature_levels(config, result, section, cohort) -> Tuple[str, ...]:
     explicit = _normalize_image_feature_levels(config.image_feature_levels)
     if explicit is not None:
         for level in explicit:
@@ -426,7 +541,10 @@ def _resolved_image_feature_levels(config, result, section) -> Tuple[str, ...]:
 
     has_spot = _has_coordinate_source(result, section, "spot")
     has_enhanced = _has_coordinate_source(result, section, "enhanced")
-    if (config.gene_enhancement or config.protein_enhancement) and has_enhanced:
+    if (
+        _cohort_enhancement_enabled(config, cohort, "Gene")
+        or _cohort_enhancement_enabled(config, cohort, "Protein")
+    ) and has_enhanced:
         return ("enhanced",)
     if has_spot:
         return ("spot",)
@@ -473,6 +591,9 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
         raise ValueError("raw_file_mode must be 'copy', 'symlink', or 'none'.")
     if str(config.image_feature_mode).lower() not in {"extract", "load"}:
         raise ValueError("image_feature_mode must be 'extract' or 'load'.")
+    for cohort_name in ("reference", "query"):
+        _cohort_image_feature_mode(config, cohort_name)
+        _cohort_molecular_options(config, cohort_name)
     _normalize_image_feature_levels(config.image_feature_levels)
     _validate_image_feature_kwargs(config)
     _validate_image_feature_level_kwargs(config)
@@ -480,10 +601,21 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
         raise ValueError(
             "Image preprocessing needs Gene or Protein AnnData to provide spot coordinates."
         )
-    if config.gene_enhancement and "Gene" not in modalities:
-        raise ValueError("gene_enhancement=True requires the Gene modality.")
-    if config.protein_enhancement and "Protein" not in modalities:
-        raise ValueError("protein_enhancement=True requires the Protein modality.")
+    for cohort_name in ("reference", "query"):
+        if (
+            _cohort_enhancement_enabled(config, cohort_name, "Gene")
+            and "Gene" not in modalities
+        ):
+            raise ValueError(
+                f"{cohort_name}_gene_enhancement=True requires the Gene modality."
+            )
+        if (
+            _cohort_enhancement_enabled(config, cohort_name, "Protein")
+            and "Protein" not in modalities
+        ):
+            raise ValueError(
+                f"{cohort_name}_protein_enhancement=True requires the Protein modality."
+            )
     molecular_templates = (
         ("reference_gene_template", config.reference_gene_template),
         ("query_gene_template", config.query_gene_template),
@@ -580,36 +712,44 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
                 "Protein modality requires query_protein_template or "
                 "query_enhanced_protein_template."
             )
-    if config.gene_enhancement and (
-        config.reference_gene_template is None or config.query_gene_template is None
+    for cohort_name, spot_gene, enhanced_gene, spot_protein, enhanced_protein in (
+        (
+            "reference",
+            config.reference_gene_template,
+            config.reference_enhanced_gene_template,
+            config.reference_protein_template,
+            config.reference_enhanced_protein_template,
+        ),
+        (
+            "query",
+            config.query_gene_template,
+            config.query_enhanced_gene_template,
+            config.query_protein_template,
+            config.query_enhanced_protein_template,
+        ),
     ):
-        raise ValueError(
-            "gene_enhancement=True requires spot-level reference/query Gene templates."
-        )
-    if config.protein_enhancement and (
-        config.reference_protein_template is None
-        or config.query_protein_template is None
-    ):
-        raise ValueError(
-            "protein_enhancement=True requires spot-level reference/query Protein "
-            "templates."
-        )
-    if config.gene_enhancement and (
-        config.reference_enhanced_gene_template is not None
-        or config.query_enhanced_gene_template is not None
-    ):
-        raise ValueError(
-            "Use either gene_enhancement=True or precomputed enhanced Gene "
-            "templates, not both."
-        )
-    if config.protein_enhancement and (
-        config.reference_enhanced_protein_template is not None
-        or config.query_enhanced_protein_template is not None
-    ):
-        raise ValueError(
-            "Use either protein_enhancement=True or precomputed enhanced Protein "
-            "templates, not both."
-        )
+        if _cohort_enhancement_enabled(config, cohort_name, "Gene"):
+            if spot_gene is None:
+                raise ValueError(
+                    f"{cohort_name}_gene_enhancement=True requires a spot-level "
+                    f"{cohort_name} Gene template."
+                )
+            if enhanced_gene is not None:
+                raise ValueError(
+                    f"Use either {cohort_name}_gene_enhancement=True or a "
+                    f"precomputed {cohort_name} enhanced Gene template, not both."
+                )
+        if _cohort_enhancement_enabled(config, cohort_name, "Protein"):
+            if spot_protein is None:
+                raise ValueError(
+                    f"{cohort_name}_protein_enhancement=True requires a spot-level "
+                    f"{cohort_name} Protein template."
+                )
+            if enhanced_protein is not None:
+                raise ValueError(
+                    f"Use either {cohort_name}_protein_enhancement=True or a "
+                    f"precomputed {cohort_name} enhanced Protein template, not both."
+                )
     if config.label_color_dict is not None and (
         config.reference_gene_template is None
         and config.reference_protein_template is None
@@ -618,7 +758,7 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
             "label_color_dict requires at least one spot-level reference molecular "
             "template because scribbles are assigned to observed spots."
         )
-    if "Image" in modalities and str(config.image_feature_mode).lower() == "load":
+    if "Image" in modalities:
         for cohort_name, spot_template, enhanced_template in (
             (
                 "reference",
@@ -631,7 +771,11 @@ def _validate_config(config: PreprocessConfig) -> Tuple[str, ...]:
                 config.query_enhanced_image_feature_template,
             ),
         ):
-            if spot_template is None and enhanced_template is None:
+            if (
+                _cohort_image_feature_mode(config, cohort_name) == "load"
+                and spot_template is None
+                and enhanced_template is None
+            ):
                 raise ValueError(
                     f"Image load mode requires at least one {cohort_name} "
                     "spot-level or enhanced image-feature template."
@@ -706,15 +850,8 @@ def _resolve_data_file(config, section, template):
 
 
 def _iter_required_data_files(config, modalities, cohort, sections):
-    extracts_image_features = (
-        "Image" in modalities and str(config.image_feature_mode).lower() == "extract"
-    )
-    loads_image_features = (
-        "Image" in modalities and str(config.image_feature_mode).lower() == "load"
-    )
-    needs_raw_images = (
-        extracts_image_features or config.gene_enhancement or config.protein_enhancement
-    )
+    loads_image_features = _cohort_loads_image_features(config, cohort, modalities)
+    needs_raw_images = _cohort_needs_raw_images(config, cohort, modalities)
     for section in sections:
         if "Gene" in modalities:
             for level in ("spot", "enhanced"):
@@ -800,10 +937,11 @@ def _empty_cohort_result(modalities):
 def _load_molecular_cohort(config, paths, sections, modalities, cohort):
     result = _empty_cohort_result(modalities)
     raw_dir = _active_raw_dir(config, paths)
+    molecular_options = _cohort_molecular_options(config, cohort)
     common_kwargs = dict(
-        target_sum=config.target_sum,
-        log1p=config.log1p,
-        uppercase_features=config.uppercase_features,
+        target_sum=molecular_options["target_sum"],
+        log1p=molecular_options["log1p"],
+        uppercase_features=molecular_options["uppercase_features"],
         feature_key="genes",
         random_state=config.random_state,
         # These objects have just been loaded and are owned by this stage.
@@ -831,8 +969,8 @@ def _load_molecular_cohort(config, paths, sections, modalities, cohort):
                 raw_dir,
                 modality="Protein",
                 file_template=template,
-                replace_zeros=config.protein_replace_zeros,
-                zero_replacement_scale=config.zero_replacement_scale,
+                replace_zeros=molecular_options["protein_replace_zeros"],
+                zero_replacement_scale=molecular_options["zero_replacement_scale"],
                 **common_kwargs,
             )
     return result
@@ -1029,10 +1167,6 @@ def _preflight_image_coordinate_inputs(
     modalities,
 ):
     """Validate pixel and scan-coordinate settings before image-dependent work."""
-    extracts_image_features = (
-        "Image" in modalities and str(config.image_feature_mode).lower() == "extract"
-    )
-
     cohorts = (
         ("reference", reference, config.reference_sections, reference_images),
         ("query", query, config.query_sections, query_images),
@@ -1049,11 +1183,18 @@ def _preflight_image_coordinate_inputs(
             should_check_annotation = (
                 cohort == "reference" and config.label_color_dict is not None
             )
-            should_check_image_features = extracts_image_features
+            should_check_image_features = _cohort_extracts_image_features(
+                config,
+                cohort,
+                modalities,
+            )
 
             for modality, enabled in (
-                ("Gene", config.gene_enhancement),
-                ("Protein", config.protein_enhancement),
+                ("Gene", _cohort_enhancement_enabled(config, cohort, "Gene")),
+                (
+                    "Protein",
+                    _cohort_enhancement_enabled(config, cohort, "Protein"),
+                ),
             ):
                 if modality not in modalities or not enabled:
                     continue
@@ -1237,15 +1378,18 @@ def _enhance_cohort(
     annotation_results=None,
 ):
     annotation_results = annotation_results or {}
-    if not config.gene_enhancement and not config.protein_enhancement:
+    if not (
+        _cohort_enhancement_enabled(config, cohort, "Gene")
+        or _cohort_enhancement_enabled(config, cohort, "Protein")
+    ):
         return
 
     from ..preprocessing.extract_scribble_annotations import assign_mask_labels_to_adata
     from ..preprocessing.gene_enhancement import enhance_gene_expression
 
     for modality, enabled in (
-        ("Gene", config.gene_enhancement),
-        ("Protein", config.protein_enhancement),
+        ("Gene", _cohort_enhancement_enabled(config, cohort, "Gene")),
+        ("Protein", _cohort_enhancement_enabled(config, cohort, "Protein")),
     ):
         if modality not in modalities or not enabled:
             continue
@@ -1328,7 +1472,7 @@ def _save_molecular_outputs(result, paths, sections):
             save_spot_coordinates(source, paths.preprocessed_dir / filename)
 
 
-def _extract_image_cohort(config, result, paths, images, sections, modalities):
+def _extract_image_cohort(config, result, paths, images, sections, cohort, modalities):
     if "Image" not in modalities:
         return
     from ..preprocessing.image_features import (
@@ -1337,7 +1481,7 @@ def _extract_image_cohort(config, result, paths, images, sections, modalities):
     )
 
     for section in sections:
-        levels = _resolved_image_feature_levels(config, result, section)
+        levels = _resolved_image_feature_levels(config, result, section, cohort)
         if not levels:
             continue
 
@@ -1463,9 +1607,9 @@ def _load_image_cohort(config, result, paths, sections, cohort, modalities):
 
 
 def _process_image_cohort(config, result, paths, images, sections, cohort, modalities):
-    image_feature_mode = str(config.image_feature_mode).lower()
+    image_feature_mode = _cohort_image_feature_mode(config, cohort)
     if image_feature_mode == "extract":
-        _extract_image_cohort(config, result, paths, images, sections, modalities)
+        _extract_image_cohort(config, result, paths, images, sections, cohort, modalities)
     elif image_feature_mode == "load":
         _load_image_cohort(config, result, paths, sections, cohort, modalities)
     else:
@@ -1511,9 +1655,9 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
       enhanced molecular templates when supplied;
     - an H&E matching the cohort image template when Image features are
       extracted from raw H&E or molecular enhancement is enabled;
-    - pre-extracted Image feature ``.h5ad`` files matching
-      ``reference_image_feature_template`` and ``query_image_feature_template``
-      when ``image_feature_mode="load"``;
+    - pre-extracted Image feature ``.h5ad`` files matching the relevant
+      reference/query Image feature templates for cohorts whose Image feature
+      mode is ``"load"``;
     - a reference annotated H&E matching ``reference_annotated_image_template`` when
       ``label_color_dict`` is supplied.
 
@@ -1558,11 +1702,15 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
         config, paths["query"], config.query_sections, modalities, "query"
     )
 
-    extracts_image_features = (
-        "Image" in modalities and str(config.image_feature_mode).lower() == "extract"
+    reference_needs_raw_images = _cohort_needs_raw_images(
+        config,
+        "reference",
+        modalities,
     )
-    needs_raw_images = (
-        extracts_image_features or config.gene_enhancement or config.protein_enhancement
+    query_needs_raw_images = _cohort_needs_raw_images(
+        config,
+        "query",
+        modalities,
     )
     reference_images = (
         _resolved_images(
@@ -1571,7 +1719,7 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
             config.reference_sections,
             cohort="reference",
         )
-        if needs_raw_images or config.label_color_dict is not None
+        if reference_needs_raw_images or config.label_color_dict is not None
         else {}
     )
     query_images = (
@@ -1581,7 +1729,7 @@ def run_preprocessing_pipeline(config: PreprocessConfig) -> PreprocessPipelineRe
             config.query_sections,
             cohort="query",
         )
-        if needs_raw_images
+        if query_needs_raw_images
         else {}
     )
 

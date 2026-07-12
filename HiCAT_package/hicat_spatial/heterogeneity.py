@@ -852,10 +852,11 @@ def section_subtype_DE_genes(
     gene_num=10,
     min_cluster_fraction=0.05,
     cat_color=None,
-    cnt_colormap="coolwarm",
+    cnt_color="coolwarm",
     x_key="pixel_x",
     y_key="pixel_y",
-    fig_scale=2500,
+    fig_size=50,
+    dpi=100,
     invert_x=False,
     invert_y=False,
 ):
@@ -941,7 +942,8 @@ def section_subtype_DE_genes(
             fig_path=fig_path,
             color_key=cluster_key,
             cat_color=cat_color,
-            size=fig_scale / (test_gene.shape[0] ** 0.5),
+            fig_size=fig_size,
+            dpi=dpi,
             invert_x=invert_x,
             invert_y=invert_y,
         )
@@ -989,8 +991,9 @@ def section_subtype_DE_genes(
                         fig_title=fig_title,
                         fig_path=fig_path,
                         color_key=g,
-                        cnt_color=cnt_colormap,
-                        size=fig_scale / (test_gene.shape[0] ** 0.5),
+                        cnt_color=cnt_color,
+                        fig_size=fig_size,
+                        dpi=dpi,
                         invert_x=invert_x,
                         invert_y=invert_y,
                     )
@@ -1141,7 +1144,8 @@ def identify_shared_subtype(
     random_state=0,
     x_key="pixel_x",
     y_key="pixel_y",
-    fig_scale=2500,
+    fig_size=50,
+    dpi=100,
     invert_x=False,
     invert_y=False,
     print_results=True,
@@ -1210,8 +1214,11 @@ def identify_shared_subtype(
     y_key : str, default="pixel_y"
         Column in `.obs` containing y coordinates.
 
-    fig_scale : float, default=2500
-        Scaling factor used to determine scatter point size.
+    fig_size : float, default=50
+        Marker size used in saved spatial scatter plots.
+
+    dpi : int, default=100
+        Resolution for saved spatial figures.
 
     invert_x : bool, default=False
         Whether to invert the x-axis.
@@ -1309,7 +1316,8 @@ def identify_shared_subtype(
                 fig_path=fig_path,
                 color_key=cluster_key,
                 cat_color=section_cat_colors,
-                size=fig_scale / (section_adata.shape[0] ** 0.5),
+                fig_size=fig_size,
+                dpi=dpi,
                 invert_x=invert_x,
                 invert_y=invert_y,
             )
@@ -1375,7 +1383,8 @@ def identify_shared_subtype(
                 fig_path=fig_path,
                 color_key=cluster_key,
                 cat_color=section_cat_colors,
-                size=fig_scale / (section_adata.shape[0] ** 0.5),
+                fig_size=fig_size,
+                dpi=dpi,
                 invert_x=invert_x,
                 invert_y=invert_y,
             )
@@ -1532,11 +1541,12 @@ def shared_subtype_DE_genes(
     individual_gene_num=35,
     x_key="pixel_x",
     y_key="pixel_y",
-    fig_scale=2500,
+    fig_size=50,
+    dpi=100,
     invert_x=False,
     invert_y=False,
     merged_key="sample",
-    cnt_colormap="coolwarm",
+    cnt_color="coolwarm",
     min_cluster_fraction=0.05,
     print_results=True,
 ):
@@ -1603,8 +1613,11 @@ def shared_subtype_DE_genes(
     y_key : str, default="pixel_y"
         Column in `.obs` containing y coordinates.
 
-    fig_scale : float, default=2500
-        Scaling factor used to determine scatter point size.
+    fig_size : float, default=50
+        Marker size used in saved spatial scatter plots.
+
+    dpi : int, default=100
+        Resolution for saved spatial figures.
 
     invert_x : bool, default=False
         Whether to invert the x-axis.
@@ -1615,7 +1628,7 @@ def shared_subtype_DE_genes(
     merged_key : str, default="sample"
         Column in merged AnnData `.obs` indicating the source tissue section.
 
-    cnt_colormap : str or matplotlib colormap, default="coolwarm"
+    cnt_color : str or matplotlib colormap, default="coolwarm"
         Continuous colormap for gene expression plots.
 
     min_cluster_fraction : float, default=0.05
@@ -1783,8 +1796,9 @@ def shared_subtype_DE_genes(
                     fig_title=fig_title,
                     fig_path=fig_path,
                     color_key=g,
-                    cnt_color=cnt_colormap,
-                    size=fig_scale / (section_adata.shape[0] ** 0.5),
+                    cnt_color=cnt_color,
+                    fig_size=fig_size,
+                    dpi=dpi,
                     invert_x=invert_x,
                     invert_y=invert_y,
                 )
@@ -1885,8 +1899,9 @@ def shared_subtype_DE_genes(
                     fig_title=fig_title,
                     fig_path=fig_path,
                     color_key=g,
-                    cnt_color=cnt_colormap,
-                    size=fig_scale / (section_adata.shape[0] ** 0.5),
+                    cnt_color=cnt_color,
+                    fig_size=fig_size,
+                    dpi=dpi,
                     invert_x=invert_x,
                     invert_y=invert_y,
                 )
@@ -2015,10 +2030,11 @@ def infer_region_shared_subtypes(
     individual_gene_num=35,
     min_cluster_fraction=0.05,
     cat_color=None,
-    cnt_colormap="coolwarm",
+    cnt_color="coolwarm",
     x_key="pixel_x",
     y_key="pixel_y",
-    fig_scale=2500,
+    fig_size=50,
+    dpi=100,
     invert_x=False,
     invert_y=False,
     merged_key="sample",
@@ -2160,7 +2176,7 @@ def infer_region_shared_subtypes(
         Color palette used for categorical subtype-cluster visualization.
         If None, the default categorical palette is used.
 
-    cnt_colormap : str, default="coolwarm"
+    cnt_color : str, default="coolwarm"
         Continuous colormap used for subtype marker gene expression plots.
 
     x_key : str, default="pixel_x"
@@ -2169,8 +2185,11 @@ def infer_region_shared_subtypes(
     y_col : str, default="pixel_y"
         Column in `.obs` containing y-coordinates for spatial visualization.
 
-    fig_scale : float, default=2500
-        Scaling factor used to determine point size in spatial plots.
+    fig_size : float, default=50
+        Marker size used in saved spatial scatter plots.
+
+    dpi : int, default=100
+        Resolution for saved spatial figures.
 
     invert_x : bool, default=False
         Whether to invert the x-axis in spatial plots.
@@ -2301,10 +2320,11 @@ def infer_region_shared_subtypes(
         gene_num=section_gene_num,
         min_cluster_fraction=min_cluster_fraction,
         cat_color=cat_color,
-        cnt_colormap=cnt_colormap,
+        cnt_color=cnt_color,
         x_key=x_key,
         y_key=y_key,
-        fig_scale=fig_scale,
+        fig_size=fig_size,
+        dpi=dpi,
         invert_x=invert_x,
         invert_y=invert_y,
     )
@@ -2341,7 +2361,8 @@ def infer_region_shared_subtypes(
         random_state=random_state,
         x_key=x_key,
         y_key=y_key,
-        fig_scale=fig_scale,
+        fig_size=fig_size,
+        dpi=dpi,
         invert_x=invert_x,
         invert_y=invert_y,
         print_results=print_results,
@@ -2363,11 +2384,12 @@ def infer_region_shared_subtypes(
         individual_gene_num=individual_gene_num,
         x_key=x_key,
         y_key=y_key,
-        fig_scale=fig_scale,
+        fig_size=fig_size,
+        dpi=dpi,
         invert_x=invert_x,
         invert_y=invert_y,
         merged_key=merged_key,
-        cnt_colormap=cnt_colormap,
+        cnt_color=cnt_color,
         min_cluster_fraction=min_cluster_fraction,
         print_results=print_results,
     )
@@ -2432,10 +2454,11 @@ def infer_heterogeneity_pipeline(
     min_cluster_fraction=0.05,
     random_state=0,
     cat_color=None,
-    cnt_colormap="coolwarm",
+    cnt_color="coolwarm",
     x_key="pixel_x",
     y_key="pixel_y",
-    fig_scale=2500,
+    fig_size=50,
+    dpi=100,
     invert_x=False,
     invert_y=False,
     merged_key="sample",
@@ -2649,7 +2672,7 @@ def infer_heterogeneity_pipeline(
 
         If None, the default categorical palette is used.
 
-    cnt_colormap : str, default="coolwarm"
+    cnt_color : str, default="coolwarm"
         Continuous colormap used for marker gene expression visualization.
 
     x_key : str, default="pixel_x"
@@ -2658,8 +2681,11 @@ def infer_heterogeneity_pipeline(
     y_col : str, default="pixel_y"
         Column in `.obs` containing y-coordinates for spatial plots.
 
-    fig_scale : float, default=2500
-        Scaling factor used to determine point size in spatial plots.
+    fig_size : float, default=50
+        Marker size used in saved spatial scatter plots.
+
+    dpi : int, default=100
+        Resolution for saved spatial figures.
 
     invert_x : bool, default=False
         Whether to invert the x-axis in spatial plots.
@@ -2805,10 +2831,11 @@ def infer_heterogeneity_pipeline(
                 individual_gene_num=individual_gene_num,
                 min_cluster_fraction=min_cluster_fraction,
                 cat_color=cat_color,
-                cnt_colormap=cnt_colormap,
+                cnt_color=cnt_color,
                 x_key=x_key,
                 y_key=y_key,
-                fig_scale=fig_scale,
+                fig_size=fig_size,
+                dpi=dpi,
                 invert_x=invert_x,
                 invert_y=invert_y,
                 merged_key=merged_key,
@@ -2843,6 +2870,12 @@ def infer_heterogeneity_pipeline(
             "n_perm": n_perm,
             "one_sided": one_sided,
             "run_subtype": run_subtype,
+            "cat_color": cat_color,
+            "cnt_color": cnt_color,
+            "fig_size": fig_size,
+            "dpi": dpi,
+            "invert_x": invert_x,
+            "invert_y": invert_y,
             "res_dir": res_dir,
         },
     )

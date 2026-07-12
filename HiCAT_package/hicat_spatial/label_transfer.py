@@ -608,17 +608,16 @@ class HierarchicalTransferSession:
                     )
                 )
                 boundary_extra = 1 if include_boundary else 0
-                if mode in {"auto", "parent_regions_plus_boundary"}:
+                if mode == "auto":
                     control["max_clusters"] = n_parent_regions + boundary_extra
-                elif mode in {"parent_regions", "regions"}:
+                elif mode == "parent_regions":
                     control["max_clusters"] = n_parent_regions
-                elif mode in {"legacy", "legacy_large_cluster_limit"}:
+                elif mode == "legacy":
                     control["max_clusters"] = 2 * n_parent_regions + boundary_extra
                 else:
                     raise ValueError(
                         "cluster_control['max_clusters'] must be an integer or "
-                        "'auto', 'parent_regions_plus_boundary', "
-                        "'parent_regions', or 'legacy'."
+                        "'auto', 'parent_regions', or 'legacy'."
                     )
             control.setdefault("method", "merge")
             control.setdefault("relabel_dense", True)
@@ -656,6 +655,51 @@ class HierarchicalTransferSession:
             "auto_parent_node": parent_node,
             "auto_parent_region_count": n_parent_regions,
         }
+
+    def _resolve_round_kmeans_n_clusters(
+        self,
+        clustering_config: Dict[str, Any],
+        parent_node: str,
+        n_obs: int,
+    ) -> None:
+        """Resolve fixed or hierarchy-aware KMeans cluster counts in place."""
+        raw_value = clustering_config.get("n_clusters", 2)
+        mode = None
+
+        if isinstance(raw_value, str):
+            value = raw_value.lower().strip()
+            if value in {"auto", "parent_regions", "regions", "tissue_regions"}:
+                mode = value
+                n_parent_regions = len(
+                    dict.fromkeys(self.hier_tree.get_regions(parent_node))
+                )
+                min_clusters = int(clustering_config.get("min_clusters", 2))
+                requested_clusters = max(n_parent_regions + 1, min_clusters)
+                clustering_config["n_clusters_parent_region_count"] = n_parent_regions
+                clustering_config["min_clusters"] = min_clusters
+            else:
+                try:
+                    requested_clusters = int(value)
+                except ValueError as exc:
+                    raise ValueError(
+                        "For KMeans, clustering_config['n_clusters'] must be an "
+                        "integer or one of 'auto', 'parent_regions', 'regions', "
+                        "or 'tissue_regions'."
+                    ) from exc
+        else:
+            requested_clusters = int(raw_value)
+
+        resolved_clusters = min(
+            max(requested_clusters, 2),
+            int(n_obs),
+        )
+        clustering_config["n_clusters"] = resolved_clusters
+        clustering_config["n_clusters_requested"] = raw_value
+        if mode is not None:
+            clustering_config["n_clusters_mode"] = mode
+            clustering_config["n_clusters_rule"] = (
+                "max(number_of_unique_tissue_regions_under_parent_node + 1, min_clusters)"
+            )
 
     def _output_node_label(self, node: str) -> str:
         if self.hier_tree.is_leaf(node):
@@ -960,10 +1004,10 @@ class HierarchicalTransferSession:
         if round_cluster_control is not None:
             round_clustering_config["cluster_control"] = round_cluster_control
         if round_clustering_config.get("clustering_method") == "kmeans":
-            requested_clusters = int(round_clustering_config.get("n_clusters", 2))
-            round_clustering_config["n_clusters"] = min(
-                max(requested_clusters, 2),
-                len(active_obs_names),
+            self._resolve_round_kmeans_n_clusters(
+                clustering_config=round_clustering_config,
+                parent_node=parent_node,
+                n_obs=len(active_obs_names),
             )
         round_result.clustering_config = deepcopy(round_clustering_config)
 
@@ -2203,7 +2247,7 @@ def save_label_transfer_outputs(
     refined_label_key=None,
     num_nbs=25,
     cat_color=None,
-    size=50,
+    fig_size=50,
     dpi=100,
     invert_x=False,
     invert_y=True,
@@ -2211,7 +2255,6 @@ def save_label_transfer_outputs(
     """
     Retrieve, optionally refine, save, and visualize Gene label-transfer output.
     """
-
     final_label_key = transfer_result.params["final_label_key"]
 
     if "Gene" not in transfer_result.query_adata_dic:
@@ -2256,7 +2299,7 @@ def save_label_transfer_outputs(
         fig_path=sample_dir / "predicted_regions.png",
         color_key=final_label_key,
         cat_color=cat_color,
-        size=size,
+        fig_size=fig_size,
         dpi=dpi,
         invert_x=invert_x,
         invert_y=invert_y,
@@ -2272,7 +2315,7 @@ def save_label_transfer_outputs(
             fig_path=sample_dir / "refined_predicted_regions.png",
             color_key=refined_label_key,
             cat_color=cat_color,
-            size=size,
+            fig_size=fig_size,
             dpi=dpi,
             invert_x=invert_x,
             invert_y=invert_y,

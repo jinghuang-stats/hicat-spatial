@@ -112,10 +112,10 @@ def cat_figure(
     fig_path, 
     color_key, 
     cat_color, 
-    size=50, 
+    fig_size=50, 
     dpi=100, 
     invert_x=False, 
-    invert_y=True
+    invert_y=True,
 ):
     """
     Save a categorical spatial scatter plot from an AnnData object.
@@ -158,7 +158,7 @@ def cat_figure(
         observed labels raise ``ValueError``. If ``None``, Scanpy uses its
         default categorical color palette.
 
-    size : float, default=50
+    fig_size : float, default=50
         Marker size used in the scatter plot.
 
     dpi : int, default=100
@@ -201,7 +201,7 @@ def cat_figure(
         color=color_key,
         palette=palette,
         show=False,
-        size=size,
+        size=fig_size,
     )
     fig.set_aspect("equal", "box")
     if invert_y is True:
@@ -224,10 +224,10 @@ def con_figure(
     fig_path,
     color_key,
     cnt_color="coolwarm",
-    size=50,
+    fig_size=50,
     dpi=100,
     invert_x=False,
-    invert_y=True
+    invert_y=True,
 ):
     """
     Save a continuous spatial scatter plot from an AnnData object.
@@ -265,10 +265,10 @@ def con_figure(
     cnt_color : str or matplotlib colormap, default="coolwarm"
         Continuous colormap used for plotting.
 
-    size : float, default=50
+    fig_size : float, default=50
         Marker size used in the scatter plot.
 
-    dpi : int, default=200
+    dpi : int, default=100
         Resolution of the saved figure.
 
     invert_x : bool, default=False
@@ -319,7 +319,7 @@ def con_figure(
         color=color_key,
         color_map=cnt_color,
         show=False,
-        size=size,
+        size=fig_size,
     )
 
     fig.set_aspect("equal", "box")

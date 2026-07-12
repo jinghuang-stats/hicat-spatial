@@ -36,9 +36,197 @@ class LabelTransferStageConfig:
         returns finalized result objects. ``"manual"`` returns sessions for
         explicit round-by-round commits.
     parameters : dict, default={}
-        Default transfer-function keywords shared by all jobs, such as
-        ``anchor_config``, ``assignment_config``, ``min_node_prop``, or
-        ``print_results``. Values inside an individual job take precedence.
+        Shared default keyword arguments passed to the selected transfer
+        function. Values inside an individual query job take precedence.
+        Stage 6 also fills ``qry_section`` from the job key, sets ``mode`` from
+        this config, and defaults ``output_dir`` to
+        ``output_dir/<query_section>``.
+
+        Put query-specific data objects in ``jobs`` rather than here, including
+        ``ref_adata_sca_dic``, ``query_adata_dic``, ``query_adata_sca_dic``,
+        ``hier_tree``, modality feature results, and ``clustering_config``.
+
+        Common scalar keys are:
+
+        ``label_key`` : str, default="label"
+            Reference annotation column.
+        ``cluster_key`` : str, default="query_cluster"
+            Query cluster column created during each hierarchy round.
+        ``final_label_key`` : str, default="hicat_label"
+            Final transferred-label column written to query AnnData objects.
+        ``unassigned_label`` : str, default="novel_cluster"
+            Fallback label for unresolved query spots/clusters.
+        ``target_parent_node`` : str or None, default=None
+            Start from a subtree; ``None`` uses the hierarchy root.
+        ``qry_nodes_dic`` : mapping or None, default=None
+            Optional initial query membership by hierarchy node.
+        ``min_node_prop`` : float, default=0.05
+            Minimum child-node query proportion needed to continue recursion.
+        ``min_node_spots`` : int, default=2
+            Minimum child-node query spots needed to continue recursion.
+        ``copy`` : bool, default=True
+            Copy query AnnData objects before writing label columns.
+        ``print_results`` : bool, default=True
+            Print per-round summaries.
+        ``fig_paras`` : mapping or None, default=None
+            Figure/color metadata retained with the result.
+
+        ``anchor_config`` controls anchor detection:
+
+        ``modalities`` : sequence[str], optional
+            Molecular modalities used for anchors, usually ``["Gene"]`` or
+            ``["Gene", "Protein"]``. If omitted, HiCAT uses selected
+            molecular clustering modalities.
+        ``modality_aggregate_mode`` : {"union", "intersection", "shared"}, default="union"
+            How modality-specific anchors are combined.
+        ``knn`` : int, default=5
+            Nearest-neighbor count for NN-based anchors.
+        ``metric`` : str, default="euclidean"
+            Distance metric for NN-based anchors.
+        ``random_state`` : int, default=0
+            Random seed for anchor detection.
+        ``max_missing_sections`` : int, default=1
+            Multi-reference NN only. Maximum missing reference-section votes
+            allowed when aggregating anchors across references.
+        ``perct_cf_upper`` : float, default=0.85
+            Quantile scenario only. Upper reference percentile for thresholding.
+        ``perct_cf_lower`` : float, default=0.15
+            Quantile scenario only. Lower fallback percentile.
+        ``max_p`` : float or list[float], default=0.5
+            Quantile scenario only. Maximum anchor-count proportion threshold.
+        ``thres_q`` : float or list[float], default=0.8
+            Quantile scenario only. Quantile used for hierarchy-level anchor
+            thresholding.
+        ``merged_key`` : str, default="sample"
+            Quantile scenario only. Column in merged reference AnnData
+            identifying reference sections.
+
+        ``assignment_config`` controls cluster-to-node label assignment:
+
+        ``x_key``, ``y_key`` : str, default=("x", "y")
+            Spatial coordinate columns, required when novel clusters are
+            reassigned.
+        ``min_cluster_spots`` : int, default=10
+            Clusters smaller than this remain unassigned before smoothing.
+        ``min_anchor_pct`` : float, default=5
+            Minimum anchor percentage required to assign a cluster.
+        ``allow_novel_clusters`` : bool, default=False
+            Whether unresolved clusters can remain novel.
+        ``prop_diff_cutoff`` : float or None, default=None
+            If set, near-tied binary assignments within this percentage gap can
+            be adjusted.
+        ``reassign_novel`` : bool, default=True
+            Reassign unresolved spots/clusters from spatial neighbors.
+        ``num_nbs`` : int, default=25
+            Neighbor count for novel-label reassignment.
+        ``adjust_one_side_assignment`` : bool, default=False
+            Optional binary one-sided assignment adjustment.
+        ``binary_ratio_thres`` : float, optional
+            Required when ``adjust_one_side_assignment=True``.
+
+        ``boundary_refinement_config`` is optional Image/HIPT cluster cleanup:
+
+        ``enabled`` : bool, default=True when the mapping is provided
+            Turn boundary refinement on or off.
+        ``x_key``, ``y_key`` : str, default=("pixel_x", "pixel_y")
+            Spatial coordinate columns.
+        ``boundary_cluster`` : str or None, default=None
+            Boundary/background cluster label. If ``None``, it is inferred.
+        ``boundary_features`` : sequence[str] or None, default=None
+            Feature names used to identify the boundary cluster.
+        ``candidate_feature_sets`` : sequence[sequence[str]] or None, default=None
+            Candidate feature-name groups for automatic boundary detection.
+        ``min_cluster_size`` : int, default=1
+            Minimum cluster size considered during boundary detection.
+        ``max_boundary_score_ratio`` : float or None, default=None
+            Optional safeguard for automatic boundary-cluster detection.
+        ``bd_num_nbs`` : int, default=25
+            Nearest non-boundary neighbors used for boundary reassignment.
+        ``smooth_after_reassign`` : bool, default=True
+            Whether to smooth labels after boundary reassignment.
+        ``smooth_num_nbs`` : int, default=15
+            Neighbor count for post-boundary smoothing.
+        ``metric`` : str, default="euclidean"
+            Spatial distance metric.
+        ``weighted_vote`` : bool, default=False
+            Use inverse-distance weighted voting for reassignment.
+
+        ``gene_subtyping_config`` is optional Gene-based subclustering after
+        the main clustering/boundary-refinement step:
+
+        ``enabled`` : bool, default=True when the mapping is provided
+            Turn gene subtyping on or off.
+        ``subtype_genes`` : sequence[str] or None, default=None
+            Explicit genes for subtyping. If provided, overrides automatic
+            target/non-target gene lists.
+        ``subtype_gene_num`` : int, default=10
+            Number of target and non-target hierarchy genes used when
+            ``subtype_genes`` is not provided.
+        ``count_num`` : int or None, default=None
+            Number of reference sections required when retrieving shared
+            hierarchical genes for subtyping.
+        ``subtype_min_cluster_prop`` : float, default=0.05
+            Minimum parent-cluster proportion eligible for subtyping.
+        ``min_cluster_size`` : int, default=30
+            Minimum spots in a parent cluster before subtyping.
+        ``min_genes`` : int, default=2
+            Minimum available subtype genes required.
+        ``clustering_method`` : {"leiden", "kmeans"}, default="leiden"
+            Method used inside each eligible parent cluster.
+        ``resolution`` : float, default=0.5
+            Initial Leiden resolution for subtyping.
+        ``n_neighbors`` : int, default=15
+            Neighbor count for Leiden subtyping.
+        ``neighbors_method`` : str or None, default="umap"
+            Scanpy neighbor backend when Leiden is used.
+        ``neighbors_metric`` : str or None, default="euclidean"
+            Neighbor distance metric when Leiden is used.
+        ``leiden_flavor`` : {"leidenalg", "igraph"} or None, default="leidenalg"
+            Leiden backend when supported by the installed Scanpy version.
+        ``leiden_directed`` : bool or None, default=None
+            Optional Scanpy Leiden ``directed`` argument.
+        ``leiden_n_iterations`` : int or None, default=None
+            Optional Scanpy Leiden iteration count.
+        ``n_clusters`` : int or None, default=None
+            KMeans subtype count when ``clustering_method="kmeans"``.
+        ``max_subtypes`` : int, default=5
+            Maximum desired subtypes per parent cluster.
+        ``scale_gene_features`` : bool, default=True
+            Standardize selected gene features before subclustering. This is
+            the canonical parameter name; ``scale_subtypes`` is not accepted.
+        ``smooth_subtypes`` : bool, default=False
+            Smooth subtype labels spatially.
+        ``x_key``, ``y_key`` : str, default=("pixel_x", "pixel_y")
+            Spatial coordinate columns required when ``smooth_subtypes=True``.
+        ``subtype_num_nbs`` : int, default=10
+            Neighbor count for subtype smoothing.
+        ``random_state`` : int, default=0
+            Random seed for subtyping.
+
+        Minimal example::
+
+            parameters={
+                "label_key": "label",
+                "cluster_key": "query_cluster",
+                "final_label_key": "hicat_label",
+                "anchor_config": {"modalities": ["Gene"], "knn": 5},
+                "assignment_config": {
+                    "x_key": "pixel_x",
+                    "y_key": "pixel_y",
+                    "min_cluster_spots": 10,
+                    "min_anchor_pct": 5,
+                },
+                "boundary_refinement_config": {
+                    "enabled": True,
+                    "x_key": "pixel_x",
+                    "y_key": "pixel_y",
+                },
+                "gene_subtyping_config": {
+                    "enabled": True,
+                    "subtype_gene_num": 10,
+                    "scale_gene_features": True,
+                },
+            }
     postprocess : bool, default=False
         If True, run ``save_label_transfer_outputs`` after each automatic
         finalized transfer result. This writes prediction tables and spatial
@@ -47,7 +235,7 @@ class LabelTransferStageConfig:
         Extra keywords for ``save_label_transfer_outputs``. Stage 6 manages
         ``transfer_result``, ``transfer_scenario``, ``output_dir``, and
         ``qry_section``. Useful keys include ``x_key``, ``y_key``, ``refine``,
-        ``num_nbs``, ``cat_color``, ``size``, ``dpi``, ``invert_x``, and
+        ``num_nbs``, ``cat_color``, ``fig_size``, ``dpi``, ``invert_x``, and
         ``invert_y``. Defaults are ``x_key="pixel_x"``, ``y_key="pixel_y"``,
         ``refine=True``, and ``num_nbs=25``.
     save_postprocessed_h5ad : bool, default=True
@@ -59,7 +247,7 @@ class LabelTransferStageConfig:
         anchor-detection, and label-assignment spatial plots.
     intermediate_figure_parameters : dict, default={}
         Optional settings for intermediate round plots. Common keys are
-        ``x_key``, ``y_key``, ``cat_color``, ``anchor_cat_color``, ``size``,
+        ``x_key``, ``y_key``, ``cat_color``, ``anchor_cat_color``, ``fig_size``,
         ``dpi``, ``invert_x``, ``invert_y``, ``base_modality``, ``subdir``,
         ``plot_clustering``, ``plot_anchors``, ``plot_assignment``, and
         ``save_tables``.
@@ -564,7 +752,7 @@ _DEFAULT_INTERMEDIATE_FIGURE_PARAMETERS = {
     "clustering_cat_color": None,
     "assignment_cat_color": None,
     "anchor_cat_color": ["#D1D1D1", "#FD2B5C"],
-    "size": 50,
+    "fig_size": 50,
     "dpi": 100,
     "invert_x": False,
     "invert_y": True,
@@ -595,9 +783,9 @@ def _normalize_intermediate_figure_parameters(parameters):
         )
     config.update(dict(parameters))
 
-    config["size"] = float(config["size"])
-    if config["size"] <= 0:
-        raise ValueError("intermediate_figure_parameters['size'] must be positive.")
+    config["fig_size"] = float(config["fig_size"])
+    if config["fig_size"] <= 0:
+        raise ValueError("intermediate_figure_parameters['fig_size'] must be positive.")
     config["dpi"] = int(config["dpi"])
     if config["dpi"] < 1:
         raise ValueError("intermediate_figure_parameters['dpi'] must be at least 1.")
@@ -660,7 +848,7 @@ def _save_cat_plot(
         fig_path=fig_path,
         color_key=color_key,
         cat_color=cat_color,
-        size=config["size"],
+        fig_size=config["fig_size"],
         dpi=config["dpi"],
         invert_x=config["invert_x"],
         invert_y=config["invert_y"],
@@ -887,8 +1075,9 @@ def run_label_transfer_stage(
         ``hier_tree``, at least one modality-specific hierarchical feature
         result, and ``clustering_config``. A minimal clustering configuration
         contains ``selected_modalities``, ``dim_reduction_method``, and
-        ``clustering_method``; KMeans also requires ``n_clusters``, while
-        Leiden accepts ``resolution`` and ``n_neighbors``.
+        ``clustering_method``; KMeans also requires ``n_clusters`` as either
+        a fixed integer or ``"auto"`` for hierarchy-aware per-round resolution,
+        while Leiden accepts ``resolution`` and ``n_neighbors``.
 
         Reference nesting differs by scenario:
 

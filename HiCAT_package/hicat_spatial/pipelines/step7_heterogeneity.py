@@ -39,6 +39,8 @@ class HeterogeneityStageConfig:
         - ``n_perm=200``, ``pcs_num=30``, and ``random_state=0``;
         - ``section_cluster_method="leiden_clusters"``;
         - ``x_key="pixel_x"`` and ``y_key="pixel_y"``;
+        - ``cat_color=None``, ``cnt_color="coolwarm"``,
+          ``fig_size=50``, and ``dpi=100``;
         - ``print_results=True``.
 
         ``res_dir`` is managed by the stage and overwritten with

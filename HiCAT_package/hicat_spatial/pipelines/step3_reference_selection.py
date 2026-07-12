@@ -60,7 +60,13 @@ class ReferenceSelectionStageConfig:
     sort_by : {"weighted", "similarity"}, default="weighted"
         Score used to rank references.
     selection_mode : {"cutoff", "top_k"}, default="cutoff"
-        Final reference-selection rule.
+        Final reference-selection rule applied after references are ranked by
+        the selection score. In both modes, a reference is selected only if its
+        score is at least ``min_similarity_level``. ``"cutoff"`` keeps
+        references with score >= ``alpha * best_score`` for each query.
+        ``"top_k"`` keeps the top ``top_k`` ranked references for each query.
+        If no reference passes ``min_similarity_level``, the best-scoring
+        reference is kept as a fallback.
     alpha : float, default=0.9
         Relative cutoff from the best score in cutoff mode.
     top_k : int, default=3
@@ -128,6 +134,12 @@ def run_reference_selection_stage(
         share usable genes; query labels are not required.
     config : ReferenceSelectionStageConfig
         Preprocessing, marker, similarity, selection, and output settings.
+        ``config.selection_mode`` controls the final rule: ``"cutoff"``
+        selects all references close enough to the best score, using
+        ``config.alpha * best_score``; ``"top_k"`` selects the top
+        ``config.top_k`` references. Both modes also apply
+        ``config.min_similarity_level`` before final selection, with a safe
+        fallback to the best reference if none pass the minimum.
     ref_section_list, query_section_list : sequence[str] or None, default=None
         Optional ordered subsets of dictionary keys. ``None`` uses every key.
 

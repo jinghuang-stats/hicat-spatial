@@ -32,7 +32,7 @@ _DEFAULT_VISUALIZATION_CONFIG = {
     "x_key": "x",
     "y_key": "y",
     "cat_color": None,
-    "size": 50,
+    "fig_size": 50,
     "dpi": 100,
     "invert_x": False,
     "invert_y": True,
@@ -86,8 +86,8 @@ def _normalize_visualization_config(
             "visualization_config['output_dir'] is required when clustering "
             "visualization is enabled."
         )
-    if float(config["size"]) <= 0:
-        raise ValueError("visualization_config['size'] must be positive.")
+    if float(config["fig_size"]) <= 0:
+        raise ValueError("visualization_config['fig_size'] must be positive.")
     if int(config["dpi"]) < 1:
         raise ValueError("visualization_config['dpi'] must be at least 1.")
 
@@ -232,7 +232,7 @@ def _save_clustering_pattern(
             fig_path=figure_path,
             color_key=cluster_key,
             cat_color=config["cat_color"],
-            size=config["size"],
+            fig_size=config["fig_size"],
             dpi=config["dpi"],
             invert_x=bool(config["invert_x"]),
             invert_y=bool(config["invert_y"]),
@@ -439,7 +439,7 @@ class MultiModalClusteringConfigResult:
     def to_clustering_config(
         self,
         clustering_method: str,
-        n_clusters: Optional[int] = None,
+        n_clusters: Optional[Any] = None,
         resolution: Optional[float] = None,
         n_neighbors: Optional[int] = None,
         random_state: Optional[int] = None,
@@ -450,7 +450,11 @@ class MultiModalClusteringConfigResult:
         Convert stored modality/dimension-reduction decisions into a plain
         clustering_config dictionary.
 
-        The user must specify the final clustering method here.
+        The user must specify the final clustering method here. For KMeans,
+        ``n_clusters`` can be a fixed integer. Stage 6 also accepts
+        ``n_clusters="auto"`` and resolves it independently for each hierarchy
+        round as ``max(number_of_unique_tissue_regions_under_parent_node + 1,
+        min_clusters)``; pass ``min_clusters`` through ``extra_params``.
         """
 
         if clustering_method not in {"kmeans", "leiden"}:
@@ -478,7 +482,10 @@ class MultiModalClusteringConfigResult:
                     "n_clusters must be specified when clustering_method='kmeans'."
                 )
 
-            config["n_clusters"] = int(n_clusters)
+            if isinstance(n_clusters, str):
+                config["n_clusters"] = n_clusters
+            else:
+                config["n_clusters"] = int(n_clusters)
 
         else:
             config["resolution"] = 0.5 if resolution is None else float(resolution)
@@ -1968,7 +1975,7 @@ def determine_multi_modal_embedding_config(
         - ``x_key``, ``y_key``: coordinate columns, default ``"x"`` and
           ``"y"``.
         - ``cat_color``: categorical palette passed to ``cat_figure``.
-        - ``size``, ``dpi``, ``invert_x``, ``invert_y``: plot settings.
+        - ``fig_size``, ``dpi``, ``invert_x``, ``invert_y``: plot settings.
         Example:
         visualization_config={
             "plot_modality_clusters": True,
@@ -1982,7 +1989,7 @@ def determine_multi_modal_embedding_config(
                 "#00A087",
                 "#3C5488",
             ],
-            "size": 80,
+            "fig_size": 80,
             "dpi": 300,
             "invert_x": False,
             "invert_y": True,
