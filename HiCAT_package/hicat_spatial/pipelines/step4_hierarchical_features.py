@@ -16,6 +16,10 @@ from ._io import (
     stage_output_from_config,
 )
 
+SHARED_REFERENCE_KEY = "shared_reference"
+LEGACY_SHARED_REFERENCE_KEYS = ("all_queries",)
+_SHARED_REFERENCE_KEYS = (SHARED_REFERENCE_KEY, *LEGACY_SHARED_REFERENCE_KEYS)
+
 
 @dataclass
 class HierarchicalFeatureStageConfig:
@@ -83,18 +87,33 @@ class HierarchicalFeatureStageResult:
     selected_refs_dic: Dict[str, list]
     params: Dict[str, Any] = field(default_factory=dict)
 
+    def _resolve_result_key(self, query_section):
+        if query_section in self.feature_results_by_query:
+            return query_section
+        for shared_key in _SHARED_REFERENCE_KEYS:
+            if shared_key in self.feature_results_by_query:
+                return shared_key
+        if len(self.feature_results_by_query) == 1:
+            return next(iter(self.feature_results_by_query))
+        raise KeyError(
+            f"No hierarchical feature result exists for {query_section!r}. "
+            f"Available keys: {list(self.feature_results_by_query)}."
+        )
+
     def get_modality_result(self, query_section, modality):
-        return self.feature_results_by_query[query_section][modality]
+        result_key = self._resolve_result_key(query_section)
+        return self.feature_results_by_query[result_key][modality]
 
     def get_multimodal_result(self, query_section):
-        return self.multimodal_results_by_query[query_section]
+        result_key = self._resolve_result_key(query_section)
+        return self.multimodal_results_by_query[result_key]
 
 
 def _default_selected_references(ref_adata_by_modality):
     first_modality = next(iter(ref_adata_by_modality), None)
     if first_modality is None:
         raise ValueError("ref_adata_by_modality is empty.")
-    return {"all_queries": list(ref_adata_by_modality[first_modality])}
+    return {SHARED_REFERENCE_KEY: list(ref_adata_by_modality[first_modality])}
 
 
 @logged_stage(
@@ -107,7 +126,7 @@ def run_hierarchical_feature_stage(
     config: HierarchicalFeatureStageConfig,
     selected_refs_dic: Optional[Mapping[str, list]] = None,
 ):
-    """Run Stage 4 for every query-specific selected-reference set.
+    """Run Stage 4 for every selected-reference set.
 
     Parameters
     ----------
@@ -122,9 +141,11 @@ def run_hierarchical_feature_stage(
     config : HierarchicalFeatureStageConfig
         Anchor format, per-modality filters, aggregation, and output settings.
     selected_refs_dic : mapping[str, sequence[str]] or None, default=None
-        Stage-3 mapping ``{query_section: [reference_section, ...]}``. Every
-        referenced section must exist for every requested modality. ``None``
-        creates one ``"all_queries"`` result using all reference sections.
+        Stage-3 mapping ``{query_section: [reference_section, ...]}``, or a
+        shared mapping such as ``{"shared_reference": reference_sections}``.
+        Every referenced section must exist for every requested modality.
+        ``None`` creates one ``"shared_reference"`` result using all reference
+        sections.
 
     Returns
     -------
@@ -245,5 +266,6 @@ def run_hierarchical_feature_stage(
 __all__ = [
     "HierarchicalFeatureStageConfig",
     "HierarchicalFeatureStageResult",
+    "SHARED_REFERENCE_KEY",
     "run_hierarchical_feature_stage",
 ]

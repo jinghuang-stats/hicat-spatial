@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any
 # Local package imports
 from .preprocessing import (
     construct_merged_scaled_adata_and_gene_df,
+    filter_low_exp_genes,
     subset_adata_dic_by_region,
 )
 from .utils import (
@@ -167,6 +168,81 @@ def marker_stability_jaccard(marker_dict):
         "pairwise": np.array(vals),
         "pairs": pairs
     }
+
+
+def filter_low_expression_reference_genes(
+    ref_adata_dic,
+    low_exp_thres=0.02,
+    common_genes=None,
+    print_results=True,
+):
+    """Filter lowly expressed genes within each reference section.
+
+    Parameters
+    ----------
+    ref_adata_dic : dict
+        Section-keyed Gene AnnData objects.
+    low_exp_thres : float or None, default=0.02
+        Minimum fraction of observations with nonzero expression. ``None``
+        returns a shallow dictionary copy without filtering.
+    common_genes : sequence or None, default=None
+        Optional ordered common-gene set. When provided, each section is first
+        restricted to this gene set before low-expression filtering. This
+        mirrors the original heterogeneity workflow: find common genes, build
+        the merged object, then filter section-specific marker-selection inputs.
+    print_results : bool, default=True
+        Whether to print retained-gene counts.
+
+    Returns
+    -------
+    dict
+        Filtered section-keyed AnnData dictionary.
+    """
+
+    if low_exp_thres is None:
+        return dict(ref_adata_dic)
+
+    low_exp_thres = float(low_exp_thres)
+    if low_exp_thres < 0 or low_exp_thres > 1:
+        raise ValueError("low_exp_thres must be between 0 and 1, or None.")
+
+    common_genes = None if common_genes is None else list(common_genes)
+    filtered_dic = {}
+
+    for section, adata in ref_adata_dic.items():
+        adata_for_filter = adata
+
+        if common_genes is not None:
+            common_for_section = [
+                gene for gene in common_genes if gene in adata.var_names
+            ]
+            if len(common_for_section) == 0:
+                raise ValueError(
+                    f"No common_genes are present in section {section!r}."
+                )
+            adata_for_filter = adata[:, common_for_section]
+
+        retained_genes = filter_low_exp_genes(
+            adata_for_filter,
+            low_exp_thres=low_exp_thres,
+        )
+
+        if len(retained_genes) == 0:
+            raise ValueError(
+                "Low-expression filtering removed all genes for "
+                f"section {section!r}. Decrease low_exp_thres."
+            )
+
+        filtered_dic[section] = adata_for_filter[:, retained_genes].copy()
+
+        if print_results:
+            print(
+                f"{section}: retained {len(retained_genes)} / "
+                f"{adata_for_filter.n_vars} genes after "
+                f"low_exp_thres={low_exp_thres}."
+            )
+
+    return filtered_dic
 
 
 def perm_adjusted_silhouette(
@@ -609,6 +685,7 @@ def infer_heterogeneity_scores(
     random_state=0,
     one_sided=True,
     min_spots=10,
+    low_exp_thres=None,
     print_results=True
 ):
     """
@@ -683,6 +760,11 @@ def infer_heterogeneity_scores(
     min_spots : int
         Minimum number of spots required for silhouette score calculation.
 
+    low_exp_thres : float or None, default=None
+        If provided, filter lowly expressed genes within each reference section
+        before marker-gene selection. The threshold is the minimum fraction of
+        observations with nonzero expression. ``None`` disables this filtering.
+
     print_results : bool
         Whether to print intermediate results.
 
@@ -730,6 +812,15 @@ def infer_heterogeneity_scores(
         print(f"Sample names: {sample_names}")
         print(f"Number of common genes: {len(common_genes)}")
         print(f"Merged AnnData shape: {all_adata.shape}")
+
+    if low_exp_thres is not None:
+        ref_adata_dic = filter_low_expression_reference_genes(
+            ref_adata_dic=ref_adata_dic,
+            low_exp_thres=low_exp_thres,
+            common_genes=common_genes,
+            print_results=print_results,
+        )
+        sample_names = list(ref_adata_dic.keys())
 
     # ------------------------------------------------------------
     # 1. Infer tissue_region_list if not provided
@@ -2440,6 +2531,7 @@ def infer_heterogeneity_pipeline(
     region_gene_num=10,
     n_perm=200,
     one_sided=True,
+    low_exp_thres=None,
     pcs_num=30,
     section_cluster_method="leiden_clusters",
     section_n_clusters=2,
@@ -2600,6 +2692,13 @@ def infer_heterogeneity_pipeline(
     one_sided : bool, default=True
         Whether to use a one-sided permutation p-value when computing adjusted
         silhouette scores.
+
+    low_exp_thres : float or None, default=None
+        If provided, filter lowly expressed genes within each reference section
+        before heterogeneity marker-gene selection. The threshold is the
+        minimum fraction of observations with nonzero expression. Use
+        ``low_exp_thres=0.02`` to mimic the original heterogeneity workflow.
+        ``None`` disables low-expression filtering.
 
     pcs_num : int, default=30
         Number of principal components used for section-level subtype clustering.
@@ -2785,6 +2884,7 @@ def infer_heterogeneity_pipeline(
         random_state=random_state,
         one_sided=one_sided,
         min_spots=min_region_spots,
+        low_exp_thres=low_exp_thres,
         print_results=print_results,
     )
 
@@ -2799,6 +2899,7 @@ def infer_heterogeneity_pipeline(
     )
 
     subtype_results = {}
+    ref_adata_for_subtypes = score_results["ref_adata_dic"]
 
     if run_subtype:
         for target_region in selected_regions:
@@ -2808,7 +2909,7 @@ def infer_heterogeneity_pipeline(
                 print("=" * 70)
 
             subtype_results[target_region] = infer_region_shared_subtypes(
-                ref_adata_dic=ref_adata_dic,
+                ref_adata_dic=ref_adata_for_subtypes,
                 target_region=target_region,
                 res_dir=os.path.join(res_dir, "heterogeneous_region_subtypes"),
                 label_key=label_key,
@@ -2857,7 +2958,7 @@ def infer_heterogeneity_pipeline(
             "top_k": top_k,
         },
         subtype_results=subtype_results,
-        sample_names=list(ref_adata_dic.keys()),
+        sample_names=list(ref_adata_for_subtypes.keys()),
         parameters={
             "label_key": label_key,
             "sample_key": sample_key,
@@ -2869,6 +2970,7 @@ def infer_heterogeneity_pipeline(
             "region_gene_num": region_gene_num,
             "n_perm": n_perm,
             "one_sided": one_sided,
+            "low_exp_thres": low_exp_thres,
             "run_subtype": run_subtype,
             "cat_color": cat_color,
             "cnt_color": cnt_color,

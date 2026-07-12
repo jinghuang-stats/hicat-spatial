@@ -37,6 +37,9 @@ class HeterogeneityStageConfig:
           ``top_k=None``, and ``score_key="hetero_score_sca"``;
         - ``run_subtype=True`` and ``min_region_spots=10``;
         - ``n_perm=200``, ``pcs_num=30``, and ``random_state=0``;
+        - ``low_exp_thres=None``; set a float such as ``0.02`` to filter
+          lowly expressed genes within each reference section before
+          heterogeneity marker selection;
         - ``section_cluster_method="leiden_clusters"``;
         - ``x_key="pixel_x"`` and ``y_key="pixel_y"``;
         - ``cat_color=None``, ``cnt_color="coolwarm"``,
@@ -44,7 +47,9 @@ class HeterogeneityStageConfig:
         - ``print_results=True``.
 
         ``res_dir`` is managed by the stage and overwritten with
-        ``output_dir``.
+        ``output_dir``. Score summary files are saved in
+        ``output_dir/heterogeneous_scores`` and subtype outputs, when enabled,
+        are saved in ``output_dir/heterogeneous_region_subtypes``.
     """
 
     output_dir: Path | str | None = None
@@ -128,7 +133,10 @@ def run_heterogeneity_stage(
     all_adata : AnnData or None, default=None
         Optional pre-merged reference object. It must contain
         ``parameters['sample_key']`` in ``.obs``. ``None`` constructs it from
-        ``ref_gene_dic`` using ordered common genes.
+        ``ref_gene_dic`` using ordered common genes. If ``low_exp_thres`` is
+        provided in ``config.parameters``, this merged object is still
+        constructed before low-expression filtering so that score inference can
+        mimic the original heterogeneity workflow.
     common_genes : sequence[str] or None, default=None
         Genes used by the merged analysis. When ``all_adata`` is constructed
         internally, ``None`` uses its inferred common genes.
@@ -141,14 +149,15 @@ def run_heterogeneity_stage(
 
     Saved files
     -----------
-    ``heterogeneity_result.pkl``, ``stage_config.json``,
-    ``selected_regions.json``, and available heterogeneity, marker-stability,
-    permutation-silhouette, and selected-region CSV summaries. The underlying
-    pipeline may also save subtype and spatial figures below ``output_dir``.
+    ``heterogeneity_result.pkl`` and ``stage_config.json`` are saved at the
+    stage root. Heterogeneity score tables are saved below
+    ``heterogeneous_scores/``. Subtype tables and figures, when enabled, are
+    saved below ``heterogeneous_region_subtypes/``.
     """
     from ..heterogeneity import infer_heterogeneity_pipeline
 
     output_dir = ensure_output_dir(config.output_dir or "results/07_heterogeneity")
+    score_dir = ensure_output_dir(output_dir / "heterogeneous_scores")
     parameters = dict(config.parameters)
     sample_key = parameters.get("sample_key", "sample")
     if all_adata is None:
@@ -171,17 +180,17 @@ def run_heterogeneity_stage(
     config_record = asdict(config)
     config_record["output_dir"] = str(output_dir)
     save_json(config_record, output_dir / "stage_config.json")
-    save_json(result.selected_regions, output_dir / "selected_regions.json")
+    save_json(result.selected_regions, score_dir / "selected_regions.json")
     if result.hetero_summary is not None:
-        result.hetero_summary.to_csv(output_dir / "heterogeneity_summary.csv")
+        result.hetero_summary.to_csv(score_dir / "heterogeneity_summary.csv")
     if result.sta_summary is not None:
-        result.sta_summary.to_csv(output_dir / "marker_stability_summary.csv")
+        result.sta_summary.to_csv(score_dir / "marker_stability_summary.csv")
     if result.perm_sil_summary is not None:
         result.perm_sil_summary.to_csv(
-            output_dir / "permutation_silhouette_summary.csv"
+            score_dir / "permutation_silhouette_summary.csv"
         )
     if result.selected_region_scores is not None:
-        result.selected_region_scores.to_csv(output_dir / "selected_region_scores.csv")
+        result.selected_region_scores.to_csv(score_dir / "selected_region_scores.csv")
     return result
 
 

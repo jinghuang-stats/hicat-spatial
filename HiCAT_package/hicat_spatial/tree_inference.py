@@ -210,17 +210,87 @@ class HierTree:
         with open(output_path, "w") as f:
             f.write(self.to_text())
 
-    def save_png(self, output_path: str | Path) -> None:
+    def save_png(
+        self,
+        output_path: str | Path,
+        *,
+        fig_size: Optional[Tuple[float, float]] = None,
+        dpi: int = 300,
+        node_size: int = 5200,
+        leaf_node_size: Optional[int] = None,
+        font_size: int = 9,
+        internal_color: str = "#1769B5",
+        root_color: str = "#155FA8",
+        leaf_colors: Optional[Mapping[str, str]] = None,
+        node_alpha: float = 0.88,
+        edge_color: str = "#2E2E2E",
+        show_internal_regions: bool = False,
+        max_regions_per_internal_label: int = 3,
+        leaf_label_width: int = 20,
+        title: Optional[str] = None,
+    ) -> None:
         """
         Save tree structure as a .png file.
 
-        This version uses networkx + matplotlib.
+        This version uses networkx + matplotlib and draws a clean hierarchy
+        with circular nodes, colored leaf regions, and adaptive spacing.
+
+        Parameters
+        ----------
+        output_path : path-like
+            Path to the output PNG file.
+        fig_size : tuple[float, float] or None, default=None
+            Matplotlib figure size. If None, size is chosen from the number of
+            leaf regions and hierarchy depth.
+        dpi : int, default=300
+            Output resolution.
+        node_size : int, default=5200
+            Matplotlib scatter size for internal nodes.
+        leaf_node_size : int or None, default=None
+            Scatter size for leaf nodes. If None, uses ``node_size``.
+        font_size : int, default=10
+            Base font size for node labels.
+        internal_color, root_color : str
+            Colors for internal nodes and root node.
+        leaf_colors : mapping or None, default=None
+            Optional color mapping for leaf nodes. Keys can be region names or
+            node names. Missing leaves use a default qualitative palette.
+        node_alpha : float, default=0.88
+            Node fill transparency. Use values closer to 1 for solid colors and
+            lower values for softer, more transparent colors.
+        edge_color : str, default="#2E2E2E"
+            Tree edge color.
+        show_internal_regions : bool, default=False
+            If True, small internal branches also show their region names.
+        max_regions_per_internal_label : int, default=3
+            Maximum number of regions shown inside an internal node when
+            ``show_internal_regions=True``.
+        leaf_label_width : int, default=20
+            Soft wrapping width for long leaf region labels.
+        title : str or None, default=None
+            Optional figure title.
         """
+        import textwrap
         import matplotlib.pyplot as plt
         import networkx as nx
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if dpi < 1:
+            raise ValueError("dpi must be at least 1.")
+        if node_size <= 0:
+            raise ValueError("node_size must be positive.")
+        if leaf_node_size is not None and leaf_node_size <= 0:
+            raise ValueError("leaf_node_size must be positive.")
+        if font_size <= 0:
+            raise ValueError("font_size must be positive.")
+        if not 0 < node_alpha <= 1:
+            raise ValueError("node_alpha must be in the interval (0, 1].")
+        if max_regions_per_internal_label < 1:
+            raise ValueError("max_regions_per_internal_label must be at least 1.")
+        if leaf_label_width < 1:
+            raise ValueError("leaf_label_width must be at least 1.")
 
         graph = nx.DiGraph()
 
@@ -228,28 +298,148 @@ class HierTree:
             for child in children:
                 graph.add_edge(parent, child)
 
-        labels = {}
-        for node, regions in self.node_dic.items():
-            if len(regions) == 1:
-                labels[node] = f"{node}\n{regions[0]}"
-            else:
-                labels[node] = node
+        leaf_nodes = self.get_leaf_nodes()
+        n_leaves = max(len(leaf_nodes), 1)
+        depth = max(len(self.hier_dic), 1)
+        if fig_size is None:
+            fig_size = (
+                max(9.0, 1.9 * n_leaves + 3.0),
+                max(6.0, 1.35 * depth + 2.5),
+            )
 
-        pos = _hierarchy_pos(graph, self.root_node)
-
-        fig, ax = plt.subplots(figsize=(10, 6))
-        nx.draw(
+        pos = _hierarchy_pos(
             graph,
-            pos,
-            labels=labels,
-            with_labels=True,
-            node_size=2500,
-            font_size=8,
-            arrows=False,
-            ax=ax,
+            self.root_node,
+            width=max(2.0 * n_leaves, 2.0),
+            vert_gap=1.35,
+            vert_loc=0.0,
+            xcenter=0.0,
         )
+
+        default_leaf_palette = [
+            "#79D3C1",
+            "#9AD27F",
+            "#F7D65A",
+            "#F58ABD",
+            "#B89BE8",
+            "#F47C77",
+            "#8BC7F7",
+            "#F4A261",
+            "#A6D854",
+            "#D4A6C8",
+            "#66C2A5",
+            "#FC8D62",
+        ]
+        leaf_colors = dict(leaf_colors or {})
+        default_color_by_region = {
+            region: default_leaf_palette[i % len(default_leaf_palette)]
+            for i, region in enumerate(self.region_names)
+        }
+
+        def _node_color(node: str) -> str:
+            regions = self.node_dic[node]
+            if node == self.root_node:
+                return root_color
+            if len(regions) == 1:
+                region = regions[0]
+                return leaf_colors.get(
+                    node,
+                    leaf_colors.get(region, default_color_by_region.get(region, "#79D3C1")),
+                )
+            return internal_color
+
+        def _node_label(node: str) -> str:
+            regions = self.node_dic[node]
+            if len(regions) == 1:
+                region = textwrap.fill(
+                    str(regions[0]).replace("_", "_"),
+                    width=leaf_label_width,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                return f"{node}\n{region}"
+            if show_internal_regions and len(regions) <= max_regions_per_internal_label:
+                region_text = "\n".join(map(str, regions))
+                return f"{node}\n{region_text}"
+            return node
+
+        fig, ax = plt.subplots(figsize=fig_size)
+
+        for parent, child in graph.edges():
+            x1, y1 = pos[parent]
+            x2, y2 = pos[child]
+            ax.plot(
+                [x1, x2],
+                [y1, y2],
+                color=edge_color,
+                linewidth=2.2,
+                solid_capstyle="round",
+                zorder=1,
+            )
+
+        nodes = list(graph.nodes())
+        xs = np.array([pos[node][0] for node in nodes], dtype=float)
+        ys = np.array([pos[node][1] for node in nodes], dtype=float)
+        node_sizes = [
+            leaf_node_size or node_size
+            if node in leaf_nodes
+            else node_size
+            for node in nodes
+        ]
+        node_colors = [_node_color(node) for node in nodes]
+
+        x_span = float(xs.max() - xs.min()) if xs.size else 1.0
+        y_span = float(ys.max() - ys.min()) if ys.size else 1.0
+        shadow_dx = max(x_span, 1.0) * 0.006
+        shadow_dy = max(y_span, 1.0) * 0.018
+
+        ax.scatter(
+            xs + shadow_dx,
+            ys - shadow_dy,
+            s=[size * 1.08 for size in node_sizes],
+            c="#000000",
+            alpha=0.16,
+            linewidths=0,
+            zorder=2,
+        )
+        ax.scatter(
+            xs,
+            ys,
+            s=node_sizes,
+            c=node_colors,
+            alpha=node_alpha,
+            edgecolors="white",
+            linewidths=3.0,
+            zorder=3,
+        )
+
+        for node in nodes:
+            x, y = pos[node]
+            is_leaf = node in leaf_nodes
+            color = "black" if is_leaf else "white"
+            weight = "bold" if not is_leaf else "semibold"
+            ax.text(
+                x,
+                y,
+                _node_label(node),
+                ha="center",
+                va="center",
+                fontsize=font_size if not is_leaf else max(font_size - 1, 6),
+                fontweight=weight,
+                color=color,
+                linespacing=1.15,
+                zorder=4,
+            )
+
+        if title is not None:
+            ax.set_title(title, fontsize=font_size + 2, fontweight="bold", pad=16)
+
+        x_margin = max(x_span * 0.12, 0.8)
+        y_margin = max(y_span * 0.16, 0.45)
+        ax.set_xlim(xs.min() - x_margin, xs.max() + x_margin)
+        ax.set_ylim(ys.min() - y_margin, ys.max() + y_margin)
         ax.set_axis_off()
-        fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
+        fig.savefig(output_path, dpi=dpi, bbox_inches="tight", pad_inches=0.25)
         plt.close(fig)
 
 

@@ -57,6 +57,10 @@ _PRIMARY_EXPORTS = {
         ".pipelines.step4_hierarchical_features",
         "HierarchicalFeatureStageResult",
     ),
+    "SHARED_REFERENCE_KEY": (
+        ".pipelines.step4_hierarchical_features",
+        "SHARED_REFERENCE_KEY",
+    ),
     "run_hierarchical_feature_stage": (
         ".pipelines.step4_hierarchical_features",
         "run_hierarchical_feature_stage",

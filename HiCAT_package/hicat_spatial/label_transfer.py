@@ -321,6 +321,36 @@ def _config_is_enabled(config: Optional[Mapping[str, Any]]) -> bool:
     return bool(config.get("enabled", True))
 
 
+def _resolve_round_allow_novel_clusters(
+    value: Any,
+    *,
+    target_regions: List[str],
+    nontgt_regions: List[str],
+) -> bool:
+    """Resolve per-round novel-cluster behavior for a binary hierarchy split."""
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "auto":
+            return len(target_regions) == 1 or len(nontgt_regions) == 1
+        if normalized in {"true", "false"}:
+            return normalized == "true"
+        raise ValueError(
+            "allow_novel_clusters must be True, False, or 'auto'. "
+            f"Received {value!r}."
+        )
+
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return False
+
+    raise TypeError(
+        "allow_novel_clusters must be True, False, or 'auto'. "
+        f"Received {type(value).__name__}."
+    )
+
+
 def _subset_query_dic_for_postprocessing(
     *,
     local_query_dic: Mapping[str, Any],
@@ -916,6 +946,26 @@ class HierarchicalTransferSession:
             return round_result
 
         child_1, child_2 = child_nodes
+        child_1_regions = self.hier_tree.get_regions(child_1)
+        child_2_regions = self.hier_tree.get_regions(child_2)
+        round_assignment_config = deepcopy(dict(assignment_config))
+        allow_novel_clusters_input = round_assignment_config.get(
+            "allow_novel_clusters",
+            False,
+        )
+        round_assignment_config["allow_novel_clusters"] = (
+            _resolve_round_allow_novel_clusters(
+                allow_novel_clusters_input,
+                target_regions=child_1_regions,
+                nontgt_regions=child_2_regions,
+            )
+        )
+        if isinstance(allow_novel_clusters_input, str) and (
+            allow_novel_clusters_input.strip().lower() == "auto"
+        ):
+            round_assignment_config["allow_novel_clusters_mode"] = "auto"
+        round_result.assignment_config = deepcopy(round_assignment_config)
+
         selected_modalities = self._selected_modalities(clustering_config)
         anchor_modalities = self._anchor_modalities(
             anchor_config,
@@ -1063,8 +1113,8 @@ class HierarchicalTransferSession:
         )
         round_result.anchor_result = anchor_result
 
-        x_key = assignment_config.get("x_key", "x")
-        y_key = assignment_config.get("y_key", "y")
+        x_key = round_assignment_config.get("x_key", "x")
+        y_key = round_assignment_config.get("y_key", "y")
         assignment_adata = _build_assignment_adata(
             local_scaled_dic=local_scaled_dic,
             local_query_dic=assignment_query_dic,
@@ -1082,7 +1132,7 @@ class HierarchicalTransferSession:
         infer_key = f"{parent_node}__assignment"
         assign_kwargs = _filter_kwargs(
             assign_hierarchical_labels,
-            assignment_config,
+            round_assignment_config,
         )
         assign_kwargs.update(
             {
@@ -1097,8 +1147,8 @@ class HierarchicalTransferSession:
         )
         assignment_result = assign_hierarchical_labels(**assign_kwargs)
 
-        if assignment_config.get("adjust_one_side_assignment", False):
-            binary_ratio_thres = assignment_config.get("binary_ratio_thres")
+        if round_assignment_config.get("adjust_one_side_assignment", False):
+            binary_ratio_thres = round_assignment_config.get("binary_ratio_thres")
             if binary_ratio_thres is None:
                 raise ValueError(
                     "binary_ratio_thres is required when "
@@ -1106,7 +1156,7 @@ class HierarchicalTransferSession:
                 )
             adjust_kwargs = _filter_kwargs(
                 adjust_one_side_binary_assignment,
-                assignment_config,
+                round_assignment_config,
             )
             adjust_kwargs.update(
                 {
@@ -1114,8 +1164,8 @@ class HierarchicalTransferSession:
                     "ref_gene_sca_dic": self._gene_reference_for_adjustment(
                         parent_node=parent_node,
                         ),
-                    "target_regions": self.hier_tree.get_regions(child_1),
-                    "nontgt_regions": self.hier_tree.get_regions(child_2),
+                    "target_regions": child_1_regions,
+                    "nontgt_regions": child_2_regions,
                     "binary_ratio_thres": binary_ratio_thres,
                     "assignment_result": assignment_result,
                     "hier_index": child_nodes,
@@ -2251,16 +2301,28 @@ def save_label_transfer_outputs(
     dpi=100,
     invert_x=False,
     invert_y=True,
+    copy=False,
 ):
     """
     Retrieve, optionally refine, save, and visualize Gene label-transfer output.
+
+    Parameters
+    ----------
+    copy : bool, default=False
+        If ``True``, copy the Gene AnnData before adding the optional refined
+        label column. The default avoids a large AnnData copy and writes only
+        lightweight CSV/PNG outputs.
     """
     final_label_key = transfer_result.params["final_label_key"]
 
     if "Gene" not in transfer_result.query_adata_dic:
         raise KeyError("transfer_result.query_adata_dic does not contain 'Gene'.")
 
-    query_gene_adata = transfer_result.query_adata_dic["Gene"].copy()
+    query_gene_adata = (
+        transfer_result.query_adata_dic["Gene"].copy()
+        if copy
+        else transfer_result.query_adata_dic["Gene"]
+    )
 
     if final_label_key not in query_gene_adata.obs:
         raise KeyError(

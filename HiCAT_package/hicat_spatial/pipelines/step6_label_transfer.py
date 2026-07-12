@@ -19,6 +19,10 @@ from ._io import (
     stage_output_from_config,
 )
 
+SHARED_REFERENCE_KEY = "shared_reference"
+LEGACY_SHARED_REFERENCE_KEYS = ("all_queries",)
+_SHARED_REFERENCE_KEYS = (SHARED_REFERENCE_KEY, *LEGACY_SHARED_REFERENCE_KEYS)
+
 
 @dataclass
 class LabelTransferStageConfig:
@@ -110,8 +114,11 @@ class LabelTransferStageConfig:
             Clusters smaller than this remain unassigned before smoothing.
         ``min_anchor_pct`` : float, default=5
             Minimum anchor percentage required to assign a cluster.
-        ``allow_novel_clusters`` : bool, default=False
-            Whether unresolved clusters can remain novel.
+        ``allow_novel_clusters`` : bool or "auto", default=False
+            Whether unresolved clusters can remain novel. If ``"auto"``, this
+            is resolved within each parent-node split: novel clusters are
+            allowed when either child node contains one tissue region, and are
+            not allowed when both child nodes contain multiple regions.
         ``prop_diff_cutoff`` : float or None, default=None
             If set, near-tied binary assignments within this percentage gap can
             be adjusted.
@@ -238,10 +245,25 @@ class LabelTransferStageConfig:
         ``num_nbs``, ``cat_color``, ``fig_size``, ``dpi``, ``invert_x``, and
         ``invert_y``. Defaults are ``x_key="pixel_x"``, ``y_key="pixel_y"``,
         ``refine=True``, and ``num_nbs=25``.
-    save_postprocessed_h5ad : bool, default=True
-        When postprocessing is enabled, save the copied Gene AnnData returned
-        by ``save_label_transfer_outputs`` as
+    save_final_obs : bool, default=True
+        Save a lightweight per-query ``final_predicted_obs.csv`` table from
+        the query Gene ``.obs`` table, or the first available query modality if
+        Gene is unavailable. This is usually enough for downstream inspection
+        and avoids writing full annotated AnnData objects.
+    save_annotated_h5ad : bool, default=False
+        Save full annotated query modality ``.h5ad`` files. This can consume a
+        lot of disk space and is disabled by default.
+    save_postprocessed_h5ad : bool, default=False
+        When postprocessing is enabled, optionally save the Gene AnnData
+        returned by ``save_label_transfer_outputs`` as
         ``output_dir/<query>/<scenario>/<query>_gene_postprocessed.h5ad``.
+        The default is ``False`` because ``predicted_obs.csv`` contains the
+        prediction and optional refined-prediction columns.
+    save_result_objects : bool, default=False
+        Save per-query and aggregate transfer-result pickle files. These
+        objects can include full AnnData inputs, so they are disabled by
+        default for memory- and disk-friendly runs. The in-memory return value
+        is always provided.
     save_intermediate_figures : bool, default=False
         If True, save one folder per committed hierarchy round with clustering,
         anchor-detection, and label-assignment spatial plots.
@@ -249,8 +271,11 @@ class LabelTransferStageConfig:
         Optional settings for intermediate round plots. Common keys are
         ``x_key``, ``y_key``, ``cat_color``, ``anchor_cat_color``, ``fig_size``,
         ``dpi``, ``invert_x``, ``invert_y``, ``base_modality``, ``subdir``,
-        ``plot_clustering``, ``plot_anchors``, ``plot_assignment``, and
-        ``save_tables``.
+        ``plot_clustering``, ``plot_clustering_steps``, ``plot_anchors``,
+        ``plot_assignment``, and ``save_tables``. When
+        ``plot_clustering_steps=True``, raw/boundary-refined/gene-subtyped
+        clustering labels are plotted when those intermediate labels are
+        available.
     """
 
     scenario: str
@@ -259,7 +284,10 @@ class LabelTransferStageConfig:
     parameters: Dict[str, Any] = field(default_factory=dict)
     postprocess: bool = False
     postprocess_parameters: Dict[str, Any] = field(default_factory=dict)
-    save_postprocessed_h5ad: bool = True
+    save_final_obs: bool = True
+    save_annotated_h5ad: bool = False
+    save_postprocessed_h5ad: bool = False
+    save_result_objects: bool = False
     save_intermediate_figures: bool = False
     intermediate_figure_parameters: Dict[str, Any] = field(default_factory=dict)
 
@@ -415,14 +443,65 @@ def _resolve_query_modalities(
     return modalities
 
 
-def _feature_result_for_modality(feature_stage_result, query_section, modality):
+def _mapping_value_for_query(
+    mapping: Mapping[str, Any],
+    query_section: str,
+    label: str,
+    shared_result_key: Optional[str] = None,
+):
+    """Return a query-specific value, falling back to shared-reference values."""
+    if query_section in mapping:
+        return mapping[query_section]
+
+    candidate_keys = []
+    if shared_result_key is not None:
+        candidate_keys.append(shared_result_key)
+    candidate_keys.extend(_SHARED_REFERENCE_KEYS)
+
+    for key in candidate_keys:
+        if key in mapping:
+            return mapping[key]
+
+    if len(mapping) == 1:
+        return next(iter(mapping.values()))
+
+    raise KeyError(
+        f"{label} is missing {query_section!r} and no shared-reference key was "
+        f"available. Available keys: {list(mapping)}."
+    )
+
+
+def _feature_result_for_modality(
+    feature_stage_result,
+    query_section,
+    modality,
+    shared_result_key: Optional[str] = None,
+):
     if feature_stage_result is None:
         return None
     if hasattr(feature_stage_result, "get_modality_result"):
-        try:
-            return feature_stage_result.get_modality_result(query_section, modality)
-        except (KeyError, AttributeError):
-            return None
+        candidate_keys = [query_section]
+        if shared_result_key is not None:
+            candidate_keys.append(shared_result_key)
+        candidate_keys.extend(_SHARED_REFERENCE_KEYS)
+
+        seen = set()
+        for key in candidate_keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                return feature_stage_result.get_modality_result(key, modality)
+            except (KeyError, AttributeError):
+                continue
+
+        result_mapping = getattr(feature_stage_result, "feature_results_by_query", {})
+        if isinstance(result_mapping, Mapping) and len(result_mapping) == 1:
+            only_key = next(iter(result_mapping))
+            try:
+                return feature_stage_result.get_modality_result(only_key, modality)
+            except (KeyError, AttributeError):
+                return None
     return None
 
 
@@ -461,6 +540,7 @@ def build_label_transfer_jobs(
     anchor_modalities: Sequence[str] = ("Gene",),
     reference_section_guides: Optional[Mapping[str, Any]] = None,
     strict_reference_guide: bool = True,
+    shared_result_key: Optional[str] = None,
 ) -> LabelTransferJobSetup:
     """Build Stage-6 jobs from previous stage results.
 
@@ -484,6 +564,8 @@ def build_label_transfer_jobs(
         Stage-2 hierarchy tree.
     clustering_configs
         ``{query_section: clustering_config}``, usually built from Stage 5.
+        A shared dictionary such as ``{"shared_reference": clustering_config}``
+        is also accepted and reused for every query.
     anchor_scenario
         ``"nn_based"`` or ``"quantile_based"``.
     query_sections
@@ -505,6 +587,10 @@ def build_label_transfer_jobs(
         all queries, or ``{query_section: guide}``.
     strict_reference_guide
         Forwarded to multi-reference NN jobs when a guide is provided.
+    shared_result_key
+        Optional explicit key for shared Stage-4/Stage-5 outputs. If omitted,
+        the helper tries the query section first, then ``"shared_reference"``,
+        then the legacy key ``"all_queries"``, then a single available key.
 
     Returns
     -------
@@ -589,10 +675,11 @@ def build_label_transfer_jobs(
             "query_adata_dic": query_adata_dic,
             "query_adata_sca_dic": query_adata_sca_dic,
             "hier_tree": hier_tree,
-            "clustering_config": _section_adata(
+            "clustering_config": _mapping_value_for_query(
                 clustering_configs,
                 query_section,
                 "clustering_configs",
+                shared_result_key=shared_result_key,
             ),
         }
 
@@ -601,6 +688,7 @@ def build_label_transfer_jobs(
                 feature_stage_result,
                 query_section,
                 modality,
+                shared_result_key=shared_result_key,
             )
             if result is not None:
                 common_job[f"{modality.lower()}_feature_results"] = result
@@ -729,7 +817,14 @@ def _is_finalized_transfer_result(result):
     )
 
 
-def _save_finalized_transfer_outputs(result, query_dir, query_section):
+def _save_finalized_transfer_outputs(
+    result,
+    query_dir,
+    query_section,
+    *,
+    save_final_obs=True,
+    save_annotated_h5ad=False,
+):
     final_label_name = result.final_labels.name or getattr(
         result, "params", {}
     ).get("final_label_key", "final_label")
@@ -737,10 +832,24 @@ def _save_finalized_transfer_outputs(result, query_dir, query_section):
         query_dir / "final_labels.csv", index=True
     )
     result.round_summary().to_csv(query_dir / "round_summary.csv", index=False)
-    for modality, adata_obj in result.query_adata_dic.items():
-        adata_obj.write_h5ad(
-            query_dir / f"{query_section}_{str(modality).lower()}_annotated.h5ad"
+
+    if save_final_obs and result.query_adata_dic:
+        source_modality = "Gene" if "Gene" in result.query_adata_dic else next(
+            iter(result.query_adata_dic)
         )
+        obs_to_save = result.query_adata_dic[source_modality].obs.copy()
+        if final_label_name not in obs_to_save:
+            obs_to_save[final_label_name] = result.final_labels.reindex(
+                obs_to_save.index
+            )
+        obs_to_save.index.name = obs_to_save.index.name or "obs_name"
+        obs_to_save.to_csv(query_dir / "final_predicted_obs.csv")
+
+    if save_annotated_h5ad:
+        for modality, adata_obj in result.query_adata_dic.items():
+            adata_obj.write_h5ad(
+                query_dir / f"{query_section}_{str(modality).lower()}_annotated.h5ad"
+            )
 
 
 _DEFAULT_INTERMEDIATE_FIGURE_PARAMETERS = {
@@ -757,6 +866,7 @@ _DEFAULT_INTERMEDIATE_FIGURE_PARAMETERS = {
     "invert_x": False,
     "invert_y": True,
     "plot_clustering": True,
+    "plot_clustering_steps": True,
     "plot_anchors": True,
     "plot_assignment": True,
     "save_tables": True,
@@ -789,7 +899,15 @@ def _normalize_intermediate_figure_parameters(parameters):
     config["dpi"] = int(config["dpi"])
     if config["dpi"] < 1:
         raise ValueError("intermediate_figure_parameters['dpi'] must be at least 1.")
-    for key in ("invert_x", "invert_y", "plot_clustering", "plot_anchors", "plot_assignment", "save_tables"):
+    for key in (
+        "invert_x",
+        "invert_y",
+        "plot_clustering",
+        "plot_clustering_steps",
+        "plot_anchors",
+        "plot_assignment",
+        "save_tables",
+    ):
         config[key] = bool(config[key])
 
     return config
@@ -927,6 +1045,40 @@ def _save_intermediate_transfer_figures(
                     cat_color=clustering_cat_color,
                     config=config,
                 )
+                intermediate_labels = getattr(
+                    round_result.clustering_result,
+                    "intermediate_labels",
+                    {},
+                ) or {}
+                if config["plot_clustering_steps"] and len(intermediate_labels) > 0:
+                    for step_idx, (step_key, step_labels) in enumerate(
+                        intermediate_labels.items()
+                    ):
+                        if str(step_key) == str(clustering_key):
+                            continue
+                        step_plot_key = str(step_key)
+                        _series_to_plot_obs(
+                            plot_adata,
+                            step_plot_key,
+                            step_labels.astype(str),
+                        )
+                        _save_cat_plot(
+                            plot_adata=plot_adata,
+                            color_key=step_plot_key,
+                            fig_title=(
+                                f"{query_section}: {parent_node} clustering step "
+                                f"{step_idx} ({step_plot_key})"
+                            ),
+                            fig_path=(
+                                round_dir
+                                / (
+                                    "01_clustering_step_"
+                                    f"{step_idx:02d}_{_safe_path_component(step_plot_key)}.png"
+                                )
+                            ),
+                            cat_color=clustering_cat_color,
+                            config=config,
+                        )
             except Exception as exc:
                 print(
                     f"[label_transfer] query={query_section!r}, round={parent_node!r}: "
@@ -989,6 +1141,20 @@ def _save_intermediate_transfer_figures(
                     round_result.clustering_result.pred_df.to_csv(
                         round_dir / "clustering_labels.csv"
                     )
+                    intermediate_labels = getattr(
+                        round_result.clustering_result,
+                        "intermediate_labels",
+                        {},
+                    ) or {}
+                    if len(intermediate_labels) > 0:
+                        pd.DataFrame(
+                            {
+                                str(key): labels.reindex(
+                                    round_result.clustering_result.labels.index
+                                ).astype(str)
+                                for key, labels in intermediate_labels.items()
+                            }
+                        ).to_csv(round_dir / "clustering_intermediate_labels.csv")
                 if round_result.anchor_result is not None:
                     round_result.anchor_result.anchor_df.to_csv(
                         round_dir / "anchor_df.csv"
@@ -1003,6 +1169,40 @@ def _save_intermediate_transfer_figures(
                     round_result.assignment_result.adjusted_cross_table.to_csv(
                         round_dir / "assignment_adjusted_cross_table.csv"
                     )
+                    adjustment_info = getattr(
+                        round_result.assignment_result,
+                        "adjustment_info",
+                        {},
+                    ) or {}
+                    prop_diff = adjustment_info.get("prop_diff")
+                    if isinstance(prop_diff, pd.Series) and not prop_diff.empty:
+                        prop_diff.rename("absolute_proportion_difference").to_csv(
+                            round_dir / "assignment_prop_diff.csv"
+                        )
+
+                    original_assignment = adjustment_info.get("original_assignment")
+                    adjusted_assignment = adjustment_info.get("adjusted_assignment")
+                    if (
+                        isinstance(original_assignment, pd.Series)
+                        and isinstance(adjusted_assignment, pd.Series)
+                        and not original_assignment.empty
+                    ):
+                        pd.DataFrame(
+                            {
+                                "original": original_assignment.astype(str),
+                                "adjusted_by_weights": adjusted_assignment.astype(str),
+                            }
+                        ).to_csv(round_dir / "assignment_weight_adjustment.csv")
+
+                    anchor_distributions = adjustment_info.get("anchor_distributions")
+                    if isinstance(anchor_distributions, dict):
+                        for label, distribution in anchor_distributions.items():
+                            if isinstance(distribution, pd.DataFrame):
+                                safe_label = str(label).replace("/", "_")
+                                distribution.to_csv(
+                                    round_dir
+                                    / f"assignment_anchor_distribution_{safe_label}.csv"
+                                )
             except Exception as exc:
                 print(
                     f"[label_transfer] query={query_section!r}, round={parent_node!r}: "
@@ -1034,6 +1234,7 @@ def _postprocess_finalized_transfer_result(
         "y_key": "pixel_y",
         "refine": True,
         "num_nbs": 25,
+        "copy": False,
     }
     kwargs.update(dict(postprocess_parameters))
     refined_gene = save_label_transfer_outputs(
@@ -1128,10 +1329,9 @@ def run_label_transfer_stage(
     -----------
     Always saves timing, stage configuration, the aggregate stage pickle, and
     one per-query result/session pickle. Automatic finalized results also save
-    labels, round summaries, and annotated modality ``.h5ad`` files. When
-    ``config.postprocess=True``, finalized results also run
-    ``save_label_transfer_outputs`` and save the returned copied Gene AnnData
-    as ``<query>_gene_postprocessed.h5ad``.
+    final labels, round summaries, and lightweight final ``.obs`` CSV files.
+    Full annotated ``.h5ad`` files, postprocessed ``.h5ad`` files, and result
+    pickles are optional because they can be large.
 
     Manual-mode sessions are saved as pickles, but finalized CSV, H5AD, and
     postprocessing outputs are skipped until the user materializes a result.
@@ -1147,6 +1347,7 @@ def run_label_transfer_stage(
     results_by_query = {}
     timing_rows = []
     timing_path = output_dir / "label_transfer_timing.csv"
+    any_save_result_objects = bool(config.save_result_objects)
 
     for query_section, job in jobs.items():
         query_dir = ensure_output_dir(output_dir / str(query_section))
@@ -1164,6 +1365,14 @@ def run_label_transfer_stage(
         save_postprocessed_h5ad = job.pop(
             "save_postprocessed_h5ad", config.save_postprocessed_h5ad
         )
+        save_final_obs = job.pop("save_final_obs", config.save_final_obs)
+        save_annotated_h5ad = job.pop(
+            "save_annotated_h5ad", config.save_annotated_h5ad
+        )
+        save_result_objects = job.pop(
+            "save_result_objects", config.save_result_objects
+        )
+        any_save_result_objects = any_save_result_objects or bool(save_result_objects)
         kwargs = dict(config.parameters)
         kwargs.update(job)
         kwargs.setdefault("qry_section", query_section)
@@ -1178,10 +1387,17 @@ def run_label_transfer_stage(
         try:
             result = transfer_function(**kwargs)
             results_by_query[query_section] = result
-            save_stage_result(result, query_dir / "label_transfer_result.pkl")
+            if save_result_objects:
+                save_stage_result(result, query_dir / "label_transfer_result.pkl")
 
             if _is_finalized_transfer_result(result):
-                _save_finalized_transfer_outputs(result, query_dir, query_section)
+                _save_finalized_transfer_outputs(
+                    result,
+                    query_dir,
+                    query_section,
+                    save_final_obs=save_final_obs,
+                    save_annotated_h5ad=save_annotated_h5ad,
+                )
                 if save_intermediate_figures:
                     _save_intermediate_transfer_figures(
                         result=result,
@@ -1248,7 +1464,8 @@ def run_label_transfer_stage(
         results_by_query=results_by_query,
         params=config_record,
     )
-    save_stage_result(stage_result, output_dir / "label_transfer_stage_result.pkl")
+    if any_save_result_objects:
+        save_stage_result(stage_result, output_dir / "label_transfer_stage_result.pkl")
     save_json(config_record, output_dir / "stage_config.json")
     return stage_result
 

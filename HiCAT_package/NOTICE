@@ -1,0 +1,15 @@
+Third-party software notice
+===========================
+
+The directory `hicat_spatial/preprocessing/uni/histosweep_vendor` contains vendored
+HistoSweep software from The Trustees of the University of Pennsylvania and
+Amelia Schroeder. It is not covered by HiCAT's MIT License. Its license permits
+use, copying, and modification for non-profit research purposes subject to its
+terms and restricts commercial distribution.
+
+The authoritative third-party terms are distributed at:
+
+    hicat_spatial/preprocessing/uni/histosweep_vendor/LICENSE.txt
+
+HIPT and UNI implementations and model weights may also be subject to their
+upstream projects' terms. Model weights are not distributed in this package.

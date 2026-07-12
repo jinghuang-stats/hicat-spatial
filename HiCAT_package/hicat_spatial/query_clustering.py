@@ -30,7 +30,7 @@ clustering_config
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -329,6 +329,7 @@ class QueryClusteringResult:
     modality_embedding_dic: Dict[str, np.ndarray]
     selected_modalities: List[str]
     config: Dict[str, Any]
+    intermediate_labels: Dict[str, pd.Series] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Normalize labels to an index-aligned string Series."""
@@ -339,6 +340,11 @@ class QueryClusteringResult:
 
         self.labels = self.labels.astype(str).copy()
         self.labels.name = self.config.get("final_pred_key", self.config.get("pred_key", self.labels.name))
+        self.intermediate_labels = {
+            str(key): value.reindex(self.labels.index).astype(str).copy()
+            for key, value in dict(self.intermediate_labels or {}).items()
+            if isinstance(value, pd.Series)
+        }
 
         if self.integrated_embedding.shape[0] != len(self.labels):
             raise ValueError(
@@ -884,6 +890,7 @@ def query_multi_modal_clustering(
         modality_embedding_dic=modality_embedding_dic,
         selected_modalities=selected_modalities,
         config=final_config,
+        intermediate_labels={pred_key: labels},
     )
 
 
@@ -1800,6 +1807,10 @@ def postprocess_query_clustering_result(
     )
     active_pred_key = pred_key
     postprocess_info: Dict[str, Any] = {}
+    intermediate_labels: Dict[str, pd.Series] = dict(
+        getattr(result, "intermediate_labels", {}) or {}
+    )
+    intermediate_labels[pred_key] = adata_out.obs[pred_key].astype(str).copy()
 
     if pred_key not in adata_out.obs.columns:
         raise KeyError(f"Temporary postprocessing data is missing column: {pred_key}")
@@ -1852,6 +1863,7 @@ def postprocess_query_clustering_result(
 
         for key in bd_info["added_keys"]:
             adata_out.obs[key] = pd.Categorical(image_tmp.obs.loc[adata_out.obs_names, key].astype(str))
+            intermediate_labels[key] = adata_out.obs[key].astype(str).copy()
 
         active_pred_key = bd_info["final_cluster_key"]
         postprocess_info["boundary_refinement"] = bd_info
@@ -1881,6 +1893,13 @@ def postprocess_query_clustering_result(
 
         active_pred_key = subtype_info["final_subtype_key"]
         postprocess_info["gene_subtyping"] = subtype_info
+        for key in [
+            subtype_info.get("subtype_key"),
+            subtype_info.get("encoded_subtype_key"),
+            subtype_info.get("final_subtype_key"),
+        ]:
+            if key is not None and key in adata_out.obs.columns:
+                intermediate_labels[key] = adata_out.obs[key].astype(str).copy()
 
     final_config = dict(getattr(result, "config", {}))
     final_config.update(
@@ -1900,4 +1919,5 @@ def postprocess_query_clustering_result(
         modality_embedding_dic=result.modality_embedding_dic,
         selected_modalities=result.selected_modalities,
         config=final_config,
+        intermediate_labels=intermediate_labels,
     )

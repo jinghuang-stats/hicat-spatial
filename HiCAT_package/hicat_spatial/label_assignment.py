@@ -46,6 +46,97 @@ class LabelAssignmentResult:
         return output
 
 
+def _format_cluster_list(clusters: List[Any]) -> str:
+    """Return a readable cluster list for diagnostic printing."""
+    if len(clusters) == 0:
+        return "None"
+    return ", ".join(map(str, clusters))
+
+
+def _anchor_distribution_by_cluster(
+    obs: pd.DataFrame,
+    *,
+    cluster_key: str,
+    anchor_key: str,
+) -> pd.DataFrame:
+    """Summarize where positive anchors fall across query clusters."""
+    anchor_values = pd.to_numeric(obs[anchor_key], errors="coerce").fillna(0)
+    anchor_obs = obs.loc[anchor_values > 0]
+
+    if anchor_obs.shape[0] == 0:
+        return pd.DataFrame(columns=["spots_num", "percentage"])
+
+    counts = anchor_obs[cluster_key].value_counts()
+    return pd.DataFrame(
+        {
+            "spots_num": counts.astype(int),
+            "percentage": counts / counts.sum(),
+        }
+    )
+
+
+def _print_binary_assignment_adjustment_report(
+    *,
+    hier_index,
+    prop_diff: pd.Series,
+    same_prop_clusters: List[Any],
+    similar_clusters: List[Any],
+    anchor_distributions: Dict[Any, pd.DataFrame],
+    cross_table_upd: pd.DataFrame,
+    original_assignment: pd.Series,
+    adjusted_assignment: pd.Series,
+    changed_clusters: List[Any],
+) -> None:
+    """Print detailed diagnostics for ambiguous binary label assignment."""
+    print(
+        "The clusters having the same proportions across two hierarchy anchors:",
+        _format_cluster_list(same_prop_clusters),
+    )
+    print(
+        "=========== The absolute proportion difference across two hierarchies ==========="
+    )
+    print(prop_diff.sort_values())
+    print(
+        "The clusters having similar proportions across two hierarchy anchors:",
+        _format_cluster_list(similar_clusters),
+    )
+
+    for label in hier_index:
+        print(f"------------------- {label} -------------------")
+        dist_table = anchor_distributions.get(label)
+        if dist_table is None or dist_table.empty:
+            print("The number of detected anchors: 0")
+            print("The anchors distribution across clusters")
+            print(pd.DataFrame(columns=["spots_num", "percentage"]))
+            continue
+
+        print(f"The number of detected anchors: {int(dist_table['spots_num'].sum())}")
+        print("The anchors distribution across clusters")
+        print(dist_table)
+
+    print(
+        "========== Updated Cross Table of Anchors "
+        "(after assigning the weights of anchors that fall in each cluster) =========="
+    )
+    print(cross_table_upd.round(2))
+
+    assignment_comparison = pd.DataFrame(
+        {
+            "original": original_assignment.astype(str),
+            "adjusted_by_weights": adjusted_assignment.astype(str),
+        }
+    )
+    print(
+        "=========== Clusters Label Assignment Difference "
+        "(without/with weights adjustment) ==========="
+    )
+    print(assignment_comparison)
+    print(
+        "After adjusted by weights, the clusters that have different label assignments:",
+        _format_cluster_list(changed_clusters),
+    )
+
+
 # ============================================================
 # Label assignment
 # ============================================================
@@ -207,31 +298,52 @@ def assign_hierarchical_labels(
 
     max_label = assign_table.idxmax(axis=0)
     max_prop = assign_table.max(axis=0)
+    adjustment_info = {
+        "adjustment_triggered": False,
+        "prop_diff_cutoff": prop_diff_cutoff,
+        "prop_diff": pd.Series(dtype=float),
+        "same_proportion_clusters": [],
+        "similar_clusters": [],
+        "anchor_distributions": {},
+        "original_assignment": max_label.copy(),
+        "adjusted_assignment": max_label.copy(),
+        "changed_clusters": [],
+    }
 
     # Optional adjustment for ambiguous binary clusters.
     if prop_diff_cutoff is not None and len(hier_index) == 2:
         prop_diff = (assign_table.iloc[0, :] - assign_table.iloc[1, :]).abs()
         similar_clusters = prop_diff[prop_diff <= prop_diff_cutoff].index.tolist()
+        same_prop_clusters = prop_diff[np.isclose(prop_diff, 0.0)].index.tolist()
+        original_assignment = max_label.copy()
+        anchor_distributions = {}
+
+        adjustment_info.update(
+            {
+                "prop_diff": prop_diff.copy(),
+                "same_proportion_clusters": same_prop_clusters,
+                "similar_clusters": similar_clusters,
+                "original_assignment": original_assignment.copy(),
+            }
+        )
 
         if print_results:
             print("========== Absolute Anchor Proportion Difference ==========")
             print(prop_diff.sort_values())
 
         if len(similar_clusters) > 0:
-            if print_results:
-                print(
-                    "Clusters with similar anchor proportions:",
-                    ", ".join(map(str, similar_clusters)),
-                )
-
             for label, anchor_key in zip(hier_index, hier_anchor_key):
-                anchor_mask = pd.to_numeric(obs[anchor_key], errors="coerce").fillna(0) > 0
-                anchor_obs = obs.loc[anchor_mask]
+                anchor_distribution = _anchor_distribution_by_cluster(
+                    obs,
+                    cluster_key=cluster_key,
+                    anchor_key=anchor_key,
+                )
+                anchor_distributions[label] = anchor_distribution
 
-                if anchor_obs.shape[0] == 0:
+                if anchor_distribution.empty:
                     continue
 
-                anchor_cluster_prop = anchor_obs[cluster_key].value_counts(normalize=True)
+                anchor_cluster_prop = anchor_distribution["percentage"]
 
                 for cluster in similar_clusters:
                     if cluster in anchor_cluster_prop.index:
@@ -242,10 +354,33 @@ def assign_hierarchical_labels(
 
             max_label = cross_table_upd.idxmax(axis=0)
             max_prop = cross_table_upd.max(axis=0)
+            changed_clusters = [
+                cluster
+                for cluster in assign_table.columns
+                if str(original_assignment.loc[cluster]) != str(max_label.loc[cluster])
+            ]
+
+            adjustment_info.update(
+                {
+                    "adjustment_triggered": True,
+                    "anchor_distributions": anchor_distributions,
+                    "adjusted_assignment": max_label.copy(),
+                    "changed_clusters": changed_clusters,
+                }
+            )
 
             if print_results:
-                print("========== Updated Cross Table ==========")
-                print(cross_table_upd.round(2))
+                _print_binary_assignment_adjustment_report(
+                    hier_index=hier_index,
+                    prop_diff=prop_diff,
+                    same_prop_clusters=same_prop_clusters,
+                    similar_clusters=similar_clusters,
+                    anchor_distributions=anchor_distributions,
+                    cross_table_upd=cross_table_upd,
+                    original_assignment=original_assignment,
+                    adjusted_assignment=max_label,
+                    changed_clusters=changed_clusters,
+                )
 
     # Assign clusters by maximum anchor proportion.
     assigned_clusters = []
@@ -309,7 +444,7 @@ def assign_hierarchical_labels(
         adjusted_cross_table=cross_table_upd,
         novel_clusters=all_novel_clusters,
         unassigned_obs_names=unassigned_obs_names,
-        adjustment_info={"adjustment_triggered": False},
+        adjustment_info=adjustment_info,
         params={
             "infer_key": infer_key,
             "cluster_key": cluster_key,

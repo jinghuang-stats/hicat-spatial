@@ -16,6 +16,10 @@ from ._io import (
     stage_output_from_config,
 )
 
+SHARED_REFERENCE_KEY = "shared_reference"
+LEGACY_SHARED_REFERENCE_KEYS = ("all_queries",)
+_SHARED_REFERENCE_KEYS = (SHARED_REFERENCE_KEY, *LEGACY_SHARED_REFERENCE_KEYS)
+
 
 @dataclass
 class ClusteringConfigStageConfig:
@@ -79,10 +83,24 @@ class ClusteringConfigStageResult:
     evaluated_nodes_by_query: Dict[str, list]
     params: Dict[str, Any] = field(default_factory=dict)
 
+    def _resolve_result_key(self, query_section):
+        if query_section in self.results_by_query:
+            return query_section
+        for shared_key in _SHARED_REFERENCE_KEYS:
+            if shared_key in self.results_by_query:
+                return shared_key
+        if len(self.results_by_query) == 1:
+            return next(iter(self.results_by_query))
+        raise KeyError(
+            f"No clustering-configuration result exists for {query_section!r}. "
+            f"Available keys: {list(self.results_by_query)}."
+        )
+
     def get_result(self, query_section, parent_node=None):
-        query_results = self.results_by_query[query_section]
+        result_key = self._resolve_result_key(query_section)
+        query_results = self.results_by_query[result_key]
         if parent_node is None:
-            parent_node = self.evaluated_nodes_by_query[query_section][0]
+            parent_node = self.evaluated_nodes_by_query[result_key][0]
         return query_results[parent_node]
 
     def to_clustering_config(self, query_section, parent_node=None, **kwargs):
@@ -99,6 +117,12 @@ def _subset_sections(adata_dic, sections, modality):
     if missing:
         raise KeyError(f"{modality} reference data are missing sections: {missing}")
     return {section: adata_dic[section] for section in sections}
+
+
+def _use_shared_output_layout(feature_stage_result) -> bool:
+    """Whether Stage 5 can save node folders directly under output_dir."""
+    result_keys = list(getattr(feature_stage_result, "multimodal_results_by_query", {}))
+    return len(result_keys) == 1 and result_keys[0] in _SHARED_REFERENCE_KEYS
 
 
 @logged_stage(
@@ -158,6 +182,7 @@ def run_clustering_config_stage(
     if config.features_format not in {"auto", "section", "modality"}:
         raise ValueError("features_format must be 'auto', 'section', or 'modality'.")
     output_dir = ensure_output_dir(config.output_dir or "results/05_clustering_config")
+    use_shared_output_layout = _use_shared_output_layout(feature_stage_result)
     results_by_query = {}
     nodes_by_query = {}
     summary_rows = []
@@ -197,9 +222,12 @@ def run_clustering_config_stage(
                 output_format=features_format,
             )
 
-            node_dir = ensure_output_dir(
-                output_dir / str(query_section) / str(parent_node)
-            )
+            if use_shared_output_layout:
+                node_dir = ensure_output_dir(output_dir / str(parent_node))
+            else:
+                node_dir = ensure_output_dir(
+                    output_dir / str(query_section) / str(parent_node)
+                )
             parameters = dict(config.parameters)
             visualization = parameters.get("visualization_config")
             if visualization is not None:
@@ -274,5 +302,6 @@ def run_clustering_config_stage(
 __all__ = [
     "ClusteringConfigStageConfig",
     "ClusteringConfigStageResult",
+    "SHARED_REFERENCE_KEY",
     "run_clustering_config_stage",
 ]

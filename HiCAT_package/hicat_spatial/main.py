@@ -110,9 +110,22 @@ def _inject_label_transfer_dependencies(jobs, tree, feature_result):
         job = dict(original_job)
         job.setdefault("hier_tree", tree)
         if feature_result is not None:
-            modality_results = feature_result.feature_results_by_query.get(
-                query_section
-            )
+            modality_results = {}
+            if hasattr(feature_result, "get_modality_result"):
+                for modality in ("Gene", "Image", "Protein"):
+                    try:
+                        modality_results[modality] = feature_result.get_modality_result(
+                            query_section,
+                            modality,
+                        )
+                    except (KeyError, AttributeError):
+                        continue
+
+            if not modality_results:
+                feature_results_by_query = getattr(
+                    feature_result, "feature_results_by_query", {}
+                )
+                modality_results = feature_results_by_query.get(query_section)
             if modality_results is None:
                 raise KeyError(
                     f"No hierarchical feature result exists for {query_section!r}."
