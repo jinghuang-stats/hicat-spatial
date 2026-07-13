@@ -1030,11 +1030,15 @@ class HierarchicalTransferSession:
         if round_gene_subtyping_config is not None:
             round_gene_subtyping_config = dict(round_gene_subtyping_config)
             if round_gene_subtyping_config.get("enabled", True):
+                subtype_feature_count_num = round_gene_subtyping_config.pop(
+                    "count_num",
+                    None,
+                )
                 target_genes, nontarget_genes = self._get_gene_subtyping_features(
                     parent_node,
                     child_1,
                     child_2,
-                    count_num=round_gene_subtyping_config.get("count_num"),
+                    count_num=subtype_feature_count_num,
                 )
                 round_gene_subtyping_config["target_genes"] = target_genes
                 round_gene_subtyping_config["nontarget_genes"] = nontarget_genes

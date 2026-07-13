@@ -2022,17 +2022,48 @@ def _reweight_sample_component_distances(
     return sample_dists_dic
 
 
+def _normalize_reference_subset(
+    reference_sections: Optional[List[str] | Tuple[str, ...] | str],
+) -> Optional[List[str]]:
+    """Normalize optional cached-tree reference-section subset."""
+    if reference_sections is None:
+        return None
+    if isinstance(reference_sections, str):
+        reference_sections = [reference_sections]
+    normalized = [str(section) for section in reference_sections]
+    if len(normalized) == 0:
+        raise ValueError("reference_sections cannot be empty when provided.")
+    duplicated = pd.Index(normalized).duplicated()
+    if duplicated.any():
+        duplicates = sorted(pd.Index(normalized)[duplicated].unique().tolist())
+        raise ValueError(f"reference_sections contains duplicates: {duplicates}")
+    return normalized
+
+
+def _subset_cached_mapping_by_reference(mapping, reference_sections):
+    """Subset a mapping only when its top-level keys are reference sections."""
+    if not isinstance(mapping, Mapping):
+        return mapping
+    available = set(mapping)
+    requested = set(reference_sections)
+    if requested.issubset(available):
+        return {section: mapping[section] for section in reference_sections}
+    return mapping
+
+
 def reweight_tree_inference_result(
     previous_result: Mapping[str, Any],
-    weights: Mapping[str, float],
+    weights: Optional[Mapping[str, float]] = None,
+    reference_sections: Optional[List[str] | Tuple[str, ...] | str] = None,
     output_dir=None,
     show_tree: bool = False,
     return_results: bool = True,
 ):
-    """Infer a new tree from cached Stage-2 component distances and new weights.
+    """Infer a new tree from cached Stage-2 component distances.
 
     This avoids rerunning feature selection and modality-specific distance
-    calculations. ``previous_result`` must be produced by
+    calculations. You can update modality weights, subset reference sections,
+    or do both. ``previous_result`` must be produced by
     :func:`infer_hier_tree_pipeline` or ``run_tree_inference_stage`` after
     component-distance caching was added.
     """
@@ -2050,10 +2081,50 @@ def reweight_tree_inference_result(
             "previous_result['metadata'] does not contain 'spot_counts'. "
             "Rerun Stage 2 once with the current HiCAT version before reweighting."
         )
-    spot_counts = {sample: float(count) for sample, count in spot_counts.items()}
+    spot_counts = {str(sample): float(count) for sample, count in spot_counts.items()}
 
+    previous_weights = metadata.get("weights")
+    if weights is None:
+        if previous_weights is None:
+            raise ValueError(
+                "weights was not provided and previous_result['metadata'] does "
+                "not contain original weights to reuse."
+            )
+        weights = previous_weights
     weights = _validate_reweighting_weights(weights)
-    sample_component_dists_dic = previous_result["sample_component_dists_dic"]
+    sample_component_dists_dic = {
+        str(sample): component_dic
+        for sample, component_dic in previous_result["sample_component_dists_dic"].items()
+    }
+    reference_sections = _normalize_reference_subset(reference_sections)
+    previous_sample_names = list(sample_component_dists_dic)
+
+    if reference_sections is not None:
+        missing_sections = [
+            section
+            for section in reference_sections
+            if section not in sample_component_dists_dic
+        ]
+        if missing_sections:
+            raise KeyError(
+                "reference_sections contains sections that are not available in "
+                "'sample_component_dists_dic': "
+                f"{missing_sections}. Available sections: {previous_sample_names}."
+            )
+        missing_counts = [
+            section for section in reference_sections if section not in spot_counts
+        ]
+        if missing_counts:
+            raise KeyError(
+                "reference_sections contains sections without cached spot counts: "
+                f"{missing_counts}."
+            )
+        sample_component_dists_dic = {
+            section: sample_component_dists_dic[section]
+            for section in reference_sections
+        }
+        spot_counts = {section: spot_counts[section] for section in reference_sections}
+
     sample_dists_dic = _reweight_sample_component_distances(
         sample_component_dists_dic=sample_component_dists_dic,
         weights=weights,
@@ -2068,12 +2139,20 @@ def reweight_tree_inference_result(
     tree = build_hier_tree(rank_matrix=integrated_ranks, show=show_tree)
     split_df = make_split_table(tree)
 
-    previous_weights = metadata.get("weights")
     metadata.update(
         {
+            "sample_names": list(sample_component_dists_dic),
             "weights": weights,
             "previous_weights": previous_weights,
+            "previous_sample_names": previous_sample_names,
+            "reference_sections": list(sample_component_dists_dic),
+            "subset_reference_sections": reference_sections,
+            "spot_counts": {
+                sample: int(count) if float(count).is_integer() else float(count)
+                for sample, count in spot_counts.items()
+            },
             "reweighted_from_precomputed_components": True,
+            "subset_from_precomputed_components": reference_sections is not None,
             "root_node": tree.root_node,
             "region_names": tree.region_names,
         }
@@ -2098,11 +2177,26 @@ def reweight_tree_inference_result(
         "sample_dists_dic": sample_dists_dic,
         "sample_component_dists_dic": sample_component_dists_dic,
         "split_df": split_df,
-        "features_dic": previous_result.get("features_dic"),
-        "region_genes_dic": previous_result.get("region_genes_dic"),
-        "region_image_dic": previous_result.get("region_image_dic"),
-        "selected_gene_dic": previous_result.get("selected_gene_dic"),
-        "selected_image_dic": previous_result.get("selected_image_dic"),
+        "features_dic": _subset_cached_mapping_by_reference(
+            previous_result.get("features_dic"),
+            list(sample_component_dists_dic),
+        ),
+        "region_genes_dic": _subset_cached_mapping_by_reference(
+            previous_result.get("region_genes_dic"),
+            list(sample_component_dists_dic),
+        ),
+        "region_image_dic": _subset_cached_mapping_by_reference(
+            previous_result.get("region_image_dic"),
+            list(sample_component_dists_dic),
+        ),
+        "selected_gene_dic": _subset_cached_mapping_by_reference(
+            previous_result.get("selected_gene_dic"),
+            list(sample_component_dists_dic),
+        ),
+        "selected_image_dic": _subset_cached_mapping_by_reference(
+            previous_result.get("selected_image_dic"),
+            list(sample_component_dists_dic),
+        ),
         "metadata": metadata,
     }
 

@@ -1881,6 +1881,7 @@ def postprocess_query_clustering_result(
         gene_cfg = dict(gene_subtyping_config)
         gene_cfg.pop("enabled", None)
         gene_cfg.pop("enables", None)
+        gene_cfg.pop("count_num", None)
         gene_cfg.setdefault("print_results", print_results)
 
         adata_out, subtype_info = subtype_clusters_by_gene_features(

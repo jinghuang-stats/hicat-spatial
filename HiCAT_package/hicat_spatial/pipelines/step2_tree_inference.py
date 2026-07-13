@@ -213,11 +213,12 @@ def run_tree_inference_stage(
 
 def rerun_tree_inference_with_weights(
     tree_result: Mapping[str, Any],
-    weights: Mapping[str, float],
+    weights: Optional[Mapping[str, float]] = None,
+    reference_sections: Sequence[str] | str | None = None,
     output_dir: Path | str | None = None,
     show_tree: bool = False,
 ):
-    """Infer a new Stage-2 tree from cached component distances and new weights.
+    """Infer a new Stage-2 tree from cached component distances.
 
     Parameters
     ----------
@@ -225,8 +226,14 @@ def rerun_tree_inference_with_weights(
         Result returned by :func:`run_tree_inference_stage` with the current
         package version. It must contain ``sample_component_dists_dic`` and
         ``metadata["spot_counts"]``.
-    weights : mapping[str, float]
-        New modality weights with keys ``w_G``, ``w_I``, and ``w_S``.
+    weights : mapping[str, float] or None, default=None
+        New modality weights with keys ``w_G``, ``w_I``, and ``w_S``. If
+        ``None``, reuse ``tree_result["metadata"]["weights"]``.
+    reference_sections : sequence[str], str, or None, default=None
+        Optional subset of cached reference sections to reuse. ``None`` uses
+        every reference section from the original Stage-2 result. This avoids
+        rerunning feature selection and component-distance calculation when you
+        want to compare trees from a subset of a larger reference cohort.
     output_dir : path-like or None, default=None
         Optional output directory for the reweighted tree result. When
         provided, this function saves ``tree_inference_result.pkl``,
@@ -237,8 +244,9 @@ def rerun_tree_inference_with_weights(
     Returns
     -------
     dict[str, Any]
-        New tree-inference result using the same selected features and cached
-        component distances, but the supplied weights.
+        New tree-inference result using cached selected features/component
+        distances, optionally restricted to ``reference_sections``, and the
+        supplied weights.
     """
     from ..tree_inference import reweight_tree_inference_result
 
@@ -246,6 +254,7 @@ def rerun_tree_inference_with_weights(
     result = reweight_tree_inference_result(
         previous_result=tree_result,
         weights=weights,
+        reference_sections=reference_sections,
         output_dir=resolved_output_dir,
         show_tree=show_tree,
         return_results=True,
@@ -254,12 +263,21 @@ def rerun_tree_inference_with_weights(
     if resolved_output_dir is not None:
         save_stage_result(result, resolved_output_dir / "tree_inference_result.pkl")
         metadata = dict(tree_result.get("metadata", {}))
+        resolved_weights = result.get("metadata", {}).get("weights", weights)
         save_json(
             {
                 "output_dir": str(resolved_output_dir),
-                "weights": dict(weights),
+                "weights": dict(resolved_weights) if resolved_weights is not None else None,
+                "reference_sections": (
+                    [reference_sections]
+                    if isinstance(reference_sections, str)
+                    else list(reference_sections)
+                    if reference_sections is not None
+                    else None
+                ),
                 "source": "precomputed_tree_component_distances",
                 "previous_weights": metadata.get("weights"),
+                "previous_sample_names": metadata.get("sample_names"),
             },
             resolved_output_dir / "stage_config.json",
         )
