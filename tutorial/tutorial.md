@@ -706,9 +706,7 @@ print("Average dimension reduction ARI:",one_result.dim_reduction_summary_df)
 
 ```text
 Selected modalities: ['Image']
-
 Dimensionality-reduction method: pca
-
 ```
 
 ### 8.3 Complete the clustering configuration
@@ -956,7 +954,7 @@ transfer_stage_result = run_label_transfer_stage(
 )
 ```
 
-<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/06_label_transfer/refined_predicted_regions.png" width=100% height=100%>
+<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/06_label_transfer/H2/single_ref_nn/refined_predicted_regions.png" width=100% height=100%>
 
 | Parameter | Description |
 |---|---|
