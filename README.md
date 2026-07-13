@@ -22,14 +22,14 @@ By organizing tissue regions into a hierarchy and transferring labels from match
 
 HiCAT provides tools to:
 
-- prepare pathologist-informed reference annotations, including annotations extracted from tissue-image scribbles;
-- integrate gene-expression, image-feature, protein, and spatial-neighborhood information;
-- infer hierarchical relationships among annotated tissue regions;
-- select query-matched reference sections for supervised annotation transfer;
-- identify hierarchy-specific molecular and imaging features;
-- determine informative modalities, dimension-reduction methods, and clustering configurations;
-- transfer tissue-region labels within studies or across studies and technologies; and
-- quantify region-specific heterogeneity and identify heterogeneous subtypes for cohort-level interpretation.
+- prepare pathologist-informed reference annotations, including annotations extracted from tissue-image scribbles
+- integrate gene-expression, image-feature, protein, and spatial-neighborhood information
+- infer hierarchical relationships among annotated tissue regions
+- select query-matched reference sections for supervised annotation transfer
+- identify hierarchy-specific molecular and imaging features
+- determine informative modalities, dimension-reduction methods, and clustering configurations
+- transfer tissue-region labels within studies or across studies and technologies
+- quantify region-specific heterogeneity and identify heterogeneous subtypes for cohort-level interpretation
 
 HiCAT is designed for spatial transcriptomics and multimodal spatial assays, including Spatial Transcriptomics, 10x Visium, 10x Visium HD, 10x Xenium, and assays with paired transcriptomic and protein measurements.
 
@@ -173,17 +173,17 @@ HiCAT uses annotated reference sections to guide annotation of one or more query
 
 Reference data should be stored as `AnnData` objects. Tissue-region annotations can be supplied in either of the following forms:
 
-- a categorical label column in `adata.obs`, such as `adata.obs["label"]`; or
-- pathologist-generated scribbles on the corresponding tissue image, which can be mapped to spatial observations during preprocessing.
+- a categorical label column in `adata.obs`, such as `adata.obs["label"]`
+- or pathologist-generated scribbles on the corresponding tissue image, which can be mapped to spatial observations during preprocessing.
 
 ### Query sections
 
 Query sections do not require tissue-region labels. Depending on the analysis, they may contain:
 
-- gene-expression measurements;
-- precomputed image features or an associated histology image;
-- protein measurements; and
-- spatial coordinates stored in `adata.obs`.
+- gene-expression measurements
+- spatial coordinates stored in `adata.obs`
+- precomputed image features or an associated histology image
+- protein measurements (if available)
 
 For multimodal analyses, use consistent observation identifiers and spatial-coordinate columns across modalities.
 
@@ -195,20 +195,24 @@ HiCAT supports pathology image features generated with HIPT and UNI. Install the
 bash scripts/download_hipt_checkpoints.sh
 bash scripts/download_uni_checkpoints.sh
 ```
-
-Some pretrained models may require separate access approval, authentication, or acceptance of their original license terms. Precomputed image features can be loaded directly when feature extraction is not needed.
+- For convenience, the pretrained checkpoints compatible with HiCAT framework are also available through the shared links for [HIPT](https://drive.google.com/drive/folders/1N7oYToW4c1H5AN1mGYWRl-TgkfCLgE36?usp=sharing) and [UNI](https://drive.google.com/drive/folders/1s2NFHuk5c9x1J9y1-nK1z3y4uYQZYpkm?usp=sharing).
+- Depending on the model, downloading or using their checkpoints may require separate access approval, authentication, or acceptance of the original model license and terms of use. Please review and comply with the requirements specified by the respective model developers.
+- Image-feature extraction can be skipped when precomputed image features are available. These features can be loaded directly and used as inputs to the HiCAT workflow. 
 
 ## Tutorial data and reference resources
 
-The tutorial uses preprocessed data so that users can focus on the HiCAT workflow rather than repeating image-feature extraction and molecular preprocessing.
+- HiCAT is a supervised framework that uses annotated spatial sections as reference data. To make the framework easier to use, we provide preprocessed reference resources for breast cancer, human tonsil, and mouse brain datasets. These resources allow users to run label transfer and heterogeneity analyses without first generating their own annotated reference datasets.
+
+- Users may also supply their own annotated spatial reference sections, which can provide more closely matched supervision for a specific tissue, disease context, or experimental platform. User-provided references can be used independently or combined with the reference resources distributed with HiCAT to support more robust and comprehensive inference.
+
+- The tutorial uses preprocessed molecular data and precomputed image features so that users can focus on the core HiCAT workflow without repeating image-feature extraction or molecular preprocessing.
 
 | Resource | Description | Data | Annotations | Precomputed reference information |
 |---|---|---|---|---|
-| Tutorial data | Preprocessed example data for reproducing the tutorial workflow | [Download](https://drive.google.com/drive/folders/1BaqScSe3mxz7JGlixYd-4SSmzHZBOoVb?usp=sharing) | Included for reference sections | — |
-| Breast cancer | Breast cancer Spatial Transcriptomics dataset | [Download](https://zenodo.org/records/3957257) | [Download](https://drive.google.com/drive/folders/1dvCbkgciSRbCc7SAMad0dBVa2tEQtMI-?usp=sharing) | [Download](https://drive.google.com/drive/folders/1dvCbkgciSRbCc7SAMad0dBVa2tEQtMI-?usp=sharing) |
-| Mouse brain | 10x Visium mouse-brain dataset | [Download](https://www.10xgenomics.com/datasets/multiomic-integration-neuroscience-application-note-visium-for-ffpe-plus-immunofluorescence-alzheimers-disease-mouse-model-brain-coronal-sections-from-one-hemisphere-over-a-time-course-1-standard) | [Download](https://drive.google.com/drive/folders/1TEf7n1TLaxQNpNHBCWbxcRIKWuas6Wd5?usp=sharing) | [Download](https://drive.google.com/drive/folders/1TEf7n1TLaxQNpNHBCWbxcRIKWuas6Wd5?usp=sharing) |
+| Tutorial data | Preprocessed example data for reproducing the tutorial workflow | [Download](https://drive.google.com/drive/folders/1BaqScSe3mxz7JGlixYd-4SSmzHZBOoVb?usp=sharing) | - | — |
+| Breast cancer | Breast cancer Spatial Transcriptomics dataset | [Download](https://zenodo.org/records/3957257) | [Download](https://drive.google.com/drive/folders/1yL9Y1f2s_N3m7O797afLyFvlZdSdeuJy?usp=sharing) | [Download](https://drive.google.com/drive/folders/1EMT0KHegTtNJVNtlEV7AJ6vw5nZHOfDn?usp=sharing) |
+| Mouse brain | 10x Visium mouse-brain dataset | [Download](https://www.10xgenomics.com/datasets/multiomic-integration-neuroscience-application-note-visium-for-ffpe-plus-immunofluorescence-alzheimers-disease-mouse-model-brain-coronal-sections-from-one-hemisphere-over-a-time-course-1-standard) | [Download](https://drive.google.com/drive/folders/1h-7ZnagZgkk0nohHUByxnf2dxXZixKOS?usp=sharing) | [Download](https://drive.google.com/drive/folders/1h-7ZnagZgkk0nohHUByxnf2dxXZixKOS?usp=sharing) |
 
-Users may also supply their own annotated reference sections or combine user-provided references with available HiCAT reference resources.
 
 ## Output structure
 
