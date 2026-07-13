@@ -78,7 +78,7 @@ The tutorial datasets have already undergone the following preprocessing steps:
 - Optional spatial-resolution enhancement for Spatial Transcriptomics data
 - Total-count normalization and log transformation of the molecular data
 
-The preprocessed datasets are available in the [shared folder](REPLACE_WITH_DATA_URL). They include:
+The preprocessed datasets are available in the [shared folder](https://drive.google.com/drive/folders/1BaqScSe3mxz7JGlixYd-4SSmzHZBOoVb?usp=sharing). They include:
 
 - Three reference sections: `H1`, `G2`, and `E1`
 - One query section: `H2`
@@ -954,7 +954,7 @@ transfer_stage_result = run_label_transfer_stage(
 )
 ```
 
-<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/06_label_transfer/H2/single_ref_nn/refined_predicted_regions.png" width=85% height=85%>
+<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/06_label_transfer/H2/single_ref_nn/refined_predicted_regions.png" width=75% height=75%>
 
 | Parameter | Description |
 |---|---|
