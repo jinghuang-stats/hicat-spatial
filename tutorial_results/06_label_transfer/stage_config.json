@@ -1,0 +1,99 @@
+{
+  "scenario": "single_ref_nn",
+  "output_dir": "/Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/06_label_transfer",
+  "mode": "auto",
+  "parameters": {
+    "label_key": "label",
+    "cluster_key": "query_cluster",
+    "final_label_key": "hicat_label",
+    "unassigned_label": "novel_cluster",
+    "min_node_prop": 0.05,
+    "min_node_spots": 2,
+    "copy": true,
+    "boundary_refinement_config": {
+      "enabled": true,
+      "x_key": "x",
+      "y_key": "y",
+      "bd_num_nbs": 25,
+      "smooth_after_reassign": true,
+      "smooth_num_nbs": 15
+    },
+    "gene_subtyping_config": {
+      "enabled": true,
+      "subtype_gene_num": 10,
+      "subtype_min_cluster_prop": 0.1,
+      "min_cluster_size": 30,
+      "clustering_method": "leiden",
+      "resolution": 0.05,
+      "n_neighbors": 15,
+      "max_subtypes": 2,
+      "scale_gene_features": false,
+      "smooth_subtypes": false,
+      "x_key": "x",
+      "y_key": "y",
+      "subtype_num_nbs": 10,
+      "random_state": 0
+    },
+    "anchor_config": {
+      "modalities": [
+        "Gene"
+      ],
+      "modality_aggregate_mode": "union",
+      "knn": 5,
+      "max_missing_sections": 1,
+      "random_state": 0
+    },
+    "assignment_config": {
+      "x_key": "x",
+      "y_key": "y",
+      "min_cluster_spots": 5,
+      "min_anchor_pct": 0,
+      "allow_novel_clusters": false,
+      "prop_diff_cutoff": 5,
+      "reassign_novel": true,
+      "num_nbs": 25
+    },
+    "print_results": true
+  },
+  "postprocess": true,
+  "postprocess_parameters": {
+    "x_key": "x",
+    "y_key": "y",
+    "refine": true,
+    "num_nbs": 10,
+    "cat_color": {
+      "adipose_tissue": "#74289C",
+      "breast_glands": "#FFCC00",
+      "cancer_in_situ": "#FF8000",
+      "connective_tissue": "#59BE86",
+      "immune_infiltrate": "#66B2FF",
+      "invasive_cancer": "#FD2B5C",
+      "novel_cluster": "#C2C2C3"
+    },
+    "fig_size": 13,
+    "dpi": 300,
+    "invert_x": false,
+    "invert_y": true
+  },
+  "save_final_obs": true,
+  "save_annotated_h5ad": false,
+  "save_postprocessed_h5ad": false,
+  "save_result_objects": false,
+  "save_intermediate_figures": true,
+  "intermediate_figure_parameters": {
+    "x_key": "x",
+    "y_key": "y",
+    "base_modality": "Gene",
+    "cat_color": null,
+    "clustering_cat_color": null,
+    "anchor_cat_color": [
+      "#000066",
+      "#FEB915"
+    ],
+    "assignment_cat_color": null,
+    "fig_size": 13,
+    "dpi": 100,
+    "invert_x": false,
+    "invert_y": true
+  }
+}

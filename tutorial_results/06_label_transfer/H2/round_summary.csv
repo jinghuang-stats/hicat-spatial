@@ -1,0 +1,6 @@
+parent_node,child_nodes,n_obs,child_counts,n_unresolved,ref_section_list,skipped,skip_reason
+node10,"['node9', 'node8']",22828,"{'node9': 14496, 'node8': 8332}",0,['H1'],False,
+node9,"['node1', 'node6']",14496,"{'node1': 1249, 'node6': 13247}",0,['H1'],False,
+node8,"['node4', 'node7']",8332,"{'node4': 667, 'node7': 7665}",0,['H1'],False,
+node6,"['node0', 'node3']",13247,"{'node0': 4798, 'node3': 8449}",0,['H1'],False,
+node7,"['node2', 'node5']",7665,"{'node2': 3456, 'node5': 4209}",0,['H1'],False,

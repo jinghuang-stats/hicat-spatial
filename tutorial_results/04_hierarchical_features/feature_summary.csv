@@ -1,0 +1,11 @@
+query_section,modality,parent_node,n_clustering_features,reference_sections
+shared_reference,Gene,node10,46,H1;G2;E1
+shared_reference,Gene,node8,48,H1;G2;E1
+shared_reference,Gene,node9,30,H1;G2;E1
+shared_reference,Gene,node6,32,H1;G2;E1
+shared_reference,Gene,node7,35,H1;G2;E1
+shared_reference,Image,node10,37,H1;G2;E1
+shared_reference,Image,node8,33,H1;G2;E1
+shared_reference,Image,node9,23,H1;G2;E1
+shared_reference,Image,node6,30,H1;G2;E1
+shared_reference,Image,node7,22,H1;G2;E1

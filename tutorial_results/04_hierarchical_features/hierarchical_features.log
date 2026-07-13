@@ -1,0 +1,326 @@
+[hierarchical_features] started at 2026-07-13T00:09:28.591068+00:00
+
+================================================================================
+Selecting hierarchical genes for sample: H1
+Anchor scenario: nn_based
+Root node: node10
+================================================================================
+
+------------------------------------------------------------
+Parent node: node10
+Binary split: node9 vs node8
+node9 regions: ['breast_glands', 'adipose_tissue', 'connective_tissue']
+node8 regions: ['immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+Target counts: {1: 11767, 0: 7136}
+Data contains: {0, 1}
+node9_vs_node8: 10 genes
+node8_vs_node9: 10 genes
+
+------------------------------------------------------------
+Parent node: node8
+Binary split: node4 vs node7
+node4 regions: ['immune_infiltrate']
+node7 regions: ['cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 6323, 1: 813}
+Data contains: {0, 1}
+node4_vs_node7: 10 genes
+node7_vs_node4: 10 genes
+
+------------------------------------------------------------
+Parent node: node9
+Binary split: node1 vs node6
+node1 regions: ['breast_glands']
+node6 regions: ['adipose_tissue', 'connective_tissue']
+Target counts: {0: 10293, 1: 1474}
+Data contains: {0, 1}
+node1_vs_node6: 10 genes
+node6_vs_node1: 2 genes
+
+------------------------------------------------------------
+Parent node: node6
+Binary split: node0 vs node3
+node0 regions: ['adipose_tissue']
+node3 regions: ['connective_tissue']
+Target counts: {0: 6283, 1: 4010}
+Data contains: {0, 1}
+node0_vs_node3: 10 genes
+node3_vs_node0: 10 genes
+
+------------------------------------------------------------
+Parent node: node7
+Binary split: node2 vs node5
+node2 regions: ['cancer_in_situ']
+node5 regions: ['invasive_cancer']
+Target counts: {1: 3295, 0: 3028}
+Data contains: {0, 1}
+node2_vs_node5: 10 genes
+node5_vs_node2: 6 genes
+
+================================================================================
+Selecting hierarchical genes for sample: G2
+Anchor scenario: nn_based
+Root node: node10
+================================================================================
+
+------------------------------------------------------------
+Parent node: node10
+Binary split: node9 vs node8
+node9 regions: ['breast_glands', 'adipose_tissue', 'connective_tissue']
+node8 regions: ['immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+Target counts: {1: 7806, 0: 6050}
+Data contains: {0, 1}
+node9_vs_node8: 5 genes
+node8_vs_node9: 10 genes
+
+------------------------------------------------------------
+Parent node: node8
+Binary split: node4 vs node7
+node4 regions: ['immune_infiltrate']
+node7 regions: ['cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 5594, 1: 456}
+Data contains: {0, 1}
+node4_vs_node7: 10 genes
+node7_vs_node4: 10 genes
+
+------------------------------------------------------------
+Parent node: node9
+Binary split: node1 vs node6
+node1 regions: ['breast_glands']
+node6 regions: ['adipose_tissue', 'connective_tissue']
+Target counts: {0: 7293, 1: 513}
+Data contains: {0, 1}
+node1_vs_node6: 10 genes
+node6_vs_node1: 10 genes
+
+------------------------------------------------------------
+Parent node: node6
+Binary split: node0 vs node3
+node0 regions: ['adipose_tissue']
+node3 regions: ['connective_tissue']
+Target counts: {0: 3835, 1: 3458}
+Data contains: {0, 1}
+node0_vs_node3: 10 genes
+node3_vs_node0: 10 genes
+
+------------------------------------------------------------
+Parent node: node7
+Binary split: node2 vs node5
+node2 regions: ['cancer_in_situ']
+node5 regions: ['invasive_cancer']
+Target counts: {0: 4892, 1: 702}
+Data contains: {0, 1}
+node2_vs_node5: 10 genes
+node5_vs_node2: 10 genes
+
+================================================================================
+Selecting hierarchical genes for sample: E1
+Anchor scenario: nn_based
+Root node: node10
+================================================================================
+
+------------------------------------------------------------
+Parent node: node10
+Binary split: node9 vs node8
+node9 regions: ['breast_glands', 'adipose_tissue', 'connective_tissue']
+node8 regions: ['immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 14133, 1: 533}
+Data contains: {0, 1}
+node9_vs_node8: 10 genes
+node8_vs_node9: 10 genes
+
+------------------------------------------------------------
+Parent node: node8
+Binary split: node4 vs node7
+node4 regions: ['immune_infiltrate']
+node7 regions: ['cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 7373, 1: 6760}
+Data contains: {0, 1}
+node4_vs_node7: 10 genes
+node7_vs_node4: 10 genes
+
+------------------------------------------------------------
+Parent node: node9
+Binary split: node1 vs node6
+node1 regions: ['breast_glands']
+node6 regions: ['adipose_tissue', 'connective_tissue']
+Target counts: {0: 533}
+Skipping node9: only one class is present.
+
+------------------------------------------------------------
+Parent node: node6
+Binary split: node0 vs node3
+node0 regions: ['adipose_tissue']
+node3 regions: ['connective_tissue']
+Target counts: {0: 533}
+Skipping node6: only one class is present.
+
+------------------------------------------------------------
+Parent node: node7
+Binary split: node2 vs node5
+node2 regions: ['cancer_in_situ']
+node5 regions: ['invasive_cancer']
+Target counts: {0: 7373}
+Skipping node7: only one class is present.
+
+================================================================================
+Selecting hierarchical genes for sample: H1
+Anchor scenario: nn_based
+Root node: node10
+================================================================================
+
+------------------------------------------------------------
+Parent node: node10
+Binary split: node9 vs node8
+node9 regions: ['breast_glands', 'adipose_tissue', 'connective_tissue']
+node8 regions: ['immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+Target counts: {1: 11767, 0: 7136}
+Data contains: {0, 1}
+node9_vs_node8: 10 genes
+node8_vs_node9: 10 genes
+
+------------------------------------------------------------
+Parent node: node8
+Binary split: node4 vs node7
+node4 regions: ['immune_infiltrate']
+node7 regions: ['cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 6323, 1: 813}
+Data contains: {0, 1}
+node4_vs_node7: 6 genes
+node7_vs_node4: 1 genes
+
+------------------------------------------------------------
+Parent node: node9
+Binary split: node1 vs node6
+node1 regions: ['breast_glands']
+node6 regions: ['adipose_tissue', 'connective_tissue']
+Target counts: {0: 10293, 1: 1474}
+Data contains: {0, 1}
+node1_vs_node6: 10 genes
+node6_vs_node1: 10 genes
+
+------------------------------------------------------------
+Parent node: node6
+Binary split: node0 vs node3
+node0 regions: ['adipose_tissue']
+node3 regions: ['connective_tissue']
+Target counts: {0: 6283, 1: 4010}
+Data contains: {0, 1}
+node0_vs_node3: 10 genes
+node3_vs_node0: 10 genes
+
+------------------------------------------------------------
+Parent node: node7
+Binary split: node2 vs node5
+node2 regions: ['cancer_in_situ']
+node5 regions: ['invasive_cancer']
+Target counts: {1: 3295, 0: 3028}
+Data contains: {0, 1}
+node2_vs_node5: 2 genes
+node5_vs_node2: 9 genes
+
+================================================================================
+Selecting hierarchical genes for sample: G2
+Anchor scenario: nn_based
+Root node: node10
+================================================================================
+
+------------------------------------------------------------
+Parent node: node10
+Binary split: node9 vs node8
+node9 regions: ['breast_glands', 'adipose_tissue', 'connective_tissue']
+node8 regions: ['immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+Target counts: {1: 7806, 0: 6050}
+Data contains: {0, 1}
+node9_vs_node8: 3 genes
+node8_vs_node9: 7 genes
+
+------------------------------------------------------------
+Parent node: node8
+Binary split: node4 vs node7
+node4 regions: ['immune_infiltrate']
+node7 regions: ['cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 5594, 1: 456}
+Data contains: {0, 1}
+node4_vs_node7: 10 genes
+node7_vs_node4: 10 genes
+
+------------------------------------------------------------
+Parent node: node9
+Binary split: node1 vs node6
+node1 regions: ['breast_glands']
+node6 regions: ['adipose_tissue', 'connective_tissue']
+Target counts: {0: 7293, 1: 513}
+Data contains: {0, 1}
+node1_vs_node6: 4 genes
+node6_vs_node1: 3 genes
+
+------------------------------------------------------------
+Parent node: node6
+Binary split: node0 vs node3
+node0 regions: ['adipose_tissue']
+node3 regions: ['connective_tissue']
+Target counts: {0: 3835, 1: 3458}
+Data contains: {0, 1}
+node0_vs_node3: 10 genes
+node3_vs_node0: 10 genes
+
+------------------------------------------------------------
+Parent node: node7
+Binary split: node2 vs node5
+node2 regions: ['cancer_in_situ']
+node5 regions: ['invasive_cancer']
+Target counts: {0: 4892, 1: 702}
+Data contains: {0, 1}
+node2_vs_node5: 7 genes
+node5_vs_node2: 10 genes
+
+================================================================================
+Selecting hierarchical genes for sample: E1
+Anchor scenario: nn_based
+Root node: node10
+================================================================================
+
+------------------------------------------------------------
+Parent node: node10
+Binary split: node9 vs node8
+node9 regions: ['breast_glands', 'adipose_tissue', 'connective_tissue']
+node8 regions: ['immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 14133, 1: 533}
+Data contains: {0, 1}
+node9_vs_node8: 10 genes
+node8_vs_node9: 8 genes
+
+------------------------------------------------------------
+Parent node: node8
+Binary split: node4 vs node7
+node4 regions: ['immune_infiltrate']
+node7 regions: ['cancer_in_situ', 'invasive_cancer']
+Target counts: {0: 7373, 1: 6760}
+Data contains: {0, 1}
+node4_vs_node7: 8 genes
+node7_vs_node4: 4 genes
+
+------------------------------------------------------------
+Parent node: node9
+Binary split: node1 vs node6
+node1 regions: ['breast_glands']
+node6 regions: ['adipose_tissue', 'connective_tissue']
+Target counts: {0: 533}
+Skipping node9: only one class is present.
+
+------------------------------------------------------------
+Parent node: node6
+Binary split: node0 vs node3
+node0 regions: ['adipose_tissue']
+node3 regions: ['connective_tissue']
+Target counts: {0: 533}
+Skipping node6: only one class is present.
+
+------------------------------------------------------------
+Parent node: node7
+Binary split: node2 vs node5
+node2 regions: ['cancer_in_situ']
+node5 regions: ['invasive_cancer']
+Target counts: {0: 7373}
+Skipping node7: only one class is present.
+[hierarchical_features] completed at 2026-07-13T00:12:48.165958+00:00 (elapsed 199.577 seconds)

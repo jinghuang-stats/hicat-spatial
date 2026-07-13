@@ -1,0 +1,2 @@
+query_section,selected_refs,n_selected_refs,ranked_refs,selection_metric,selection_mode,alpha,top_k,min_similarity_level
+H2,['H1'],1,"['H1', 'E1', 'G2']",KS_similarity,cutoff,0.85,3,0.75

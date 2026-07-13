@@ -1,0 +1,37 @@
+{
+  "output_dir": "/Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/02_tree_inference",
+  "label_key": "label",
+  "x_key": "x",
+  "y_key": "y",
+  "image_available": true,
+  "image_feature_key": "hipt",
+  "gene_filtering_paras": {
+    "min_fold_change": 1.1,
+    "min_in_out_group_ratio": 1.0,
+    "min_in_group_fraction": 0.5,
+    "pvals_adj": 0.05,
+    "gene_num": 10
+  },
+  "image_filtering_paras": {
+    "min_fold_change": 1.05,
+    "min_in_out_group_ratio": 1.0,
+    "min_in_group_fraction": 0.5,
+    "pvals_adj": 0.05,
+    "gene_num": 5
+  },
+  "weights": {
+    "w_G": 1.0,
+    "w_I": 1.0,
+    "w_S": 1.0
+  },
+  "neighbors": null,
+  "shape": "hexagon",
+  "scale": true,
+  "show_tree": false,
+  "exclude_regions": [
+    "nan",
+    "unknown"
+  ],
+  "exclude_mode": "contains",
+  "print_results": true
+}

@@ -1,0 +1,6 @@
+parent_node,child_1,child_2,child_1_regions,child_2_regions,parent_regions
+node10,node9,node8,breast_glands;adipose_tissue;connective_tissue,immune_infiltrate;cancer_in_situ;invasive_cancer,breast_glands;adipose_tissue;connective_tissue;immune_infiltrate;cancer_in_situ;invasive_cancer
+node8,node4,node7,immune_infiltrate,cancer_in_situ;invasive_cancer,immune_infiltrate;cancer_in_situ;invasive_cancer
+node9,node1,node6,breast_glands,adipose_tissue;connective_tissue,breast_glands;adipose_tissue;connective_tissue
+node6,node0,node3,adipose_tissue,connective_tissue,adipose_tissue;connective_tissue
+node7,node2,node5,cancer_in_situ,invasive_cancer,cancer_in_situ;invasive_cancer

@@ -1,0 +1,237 @@
+[clustering_config] started at 2026-07-13T00:13:17.899936+00:00
+
+============================================================
+Evaluating modality: Gene
+============================================================
+Actual number of principal components used after adjustment: 30
+========== KMeans Clustering Results ==========
+3    9636
+0    4189
+2    2885
+1     952
+4     874
+5     367
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/informative_modalities/Gene/H1_clusters.png
+H1: n_labels=6, n_clusters=6, ARI=0.3122
+Actual number of principal components used after adjustment: 30
+========== KMeans Clustering Results ==========
+1    4313
+3    3909
+0    3317
+2    1307
+4     573
+5     437
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/informative_modalities/Gene/G2_clusters.png
+G2: n_labels=6, n_clusters=6, ARI=0.1941
+Actual number of principal components used after adjustment: 30
+========== KMeans Clustering Results ==========
+0    6465
+1    5694
+2    2507
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/informative_modalities/Gene/E1_clusters.png
+E1: n_labels=3, n_clusters=3, ARI=0.1017
+
+============================================================
+Evaluating modality: Image
+============================================================
+Actual number of principal components used after adjustment: 10
+========== KMeans Clustering Results ==========
+2    4282
+0    2938
+6    2639
+5    2601
+4    2336
+3    2227
+1    1880
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577  hipt_578  cluster_size  boundary_score
+2  0.035663  0.019647  0.017966          4282        0.073276
+6  0.243024  0.116789  0.092242          2639        0.452055
+5 -0.383214 -0.335063 -0.211085          2601        0.929362
+0  0.648192  0.601537  0.387664          2938        1.637393
+1 -0.679396 -0.600659 -0.373157          1880        1.653212
+3  0.771230  0.709322  0.459473          2227        1.940025
+4 -0.932160 -0.724401 -0.519392          2336        2.175952
+Boundary cluster: 2
+========================= boundary-reassigned clusters =========================
+modality_eval_cluster_bd_reassigned
+0    3892
+5    3885
+6    3241
+4    2970
+3    2893
+1    2022
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+modality_eval_cluster_bd_refined
+0    3986
+5    3848
+6    3088
+4    3038
+3    2942
+1    2001
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/informative_modalities/Image/H1_clusters.png
+H1: n_labels=6, n_clusters=7, ARI=0.4272
+Actual number of principal components used after adjustment: 10
+========== KMeans Clustering Results ==========
+2    4206
+3    2016
+4    2009
+5    1998
+6    1511
+1    1148
+0     968
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577  hipt_578  cluster_size  boundary_score
+2 -0.031533 -0.014785 -0.013102          4206        0.059420
+6  0.168907  0.062457  0.049931          1511        0.281295
+5 -0.215180 -0.134235 -0.091135          1998        0.440550
+0  0.545314  0.508578  0.333709           968        1.387600
+1 -0.502779 -0.560384 -0.376180          1148        1.439342
+3 -0.735695 -0.573105 -0.376794          2016        1.685594
+4  0.773300  0.655445  0.439926          2009        1.868672
+Boundary cluster: 2
+========================= boundary-reassigned clusters =========================
+modality_eval_cluster_bd_reassigned
+5    3082
+3    2690
+4    2653
+6    2168
+0    1827
+1    1436
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+modality_eval_cluster_bd_refined
+5    3204
+4    2729
+3    2583
+6    2247
+0    1773
+1    1320
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/informative_modalities/Image/G2_clusters.png
+G2: n_labels=6, n_clusters=7, ARI=0.3384
+Actual number of principal components used after adjustment: 10
+========== KMeans Clustering Results ==========
+2    6572
+0    3983
+3    2380
+1    1731
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577  hipt_578  cluster_size  boundary_score
+2 -0.054772 -0.030962 -0.019433          6572        0.105167
+1  0.307930  0.242378  0.168890          1731        0.719198
+0 -0.389991 -0.329500 -0.244691          3983        0.964183
+3  0.573855  0.453740  0.334094          2380        1.361688
+Boundary cluster: 2
+========================= boundary-reassigned clusters =========================
+modality_eval_cluster_bd_reassigned
+0    6850
+3    5513
+1    2303
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+modality_eval_cluster_bd_refined
+0    7021
+3    5492
+1    2153
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/informative_modalities/Image/E1_clusters.png
+E1: n_labels=3, n_clusters=4, ARI=0.2810
+
+============================================================
+Modality informativeness summary
+============================================================
+  modality  average_ari  average_ari_raw  average_ari_refined  median_ari   min_ari   max_ari  n_sections
+0    Image     0.348884         0.182155             0.348884    0.338383  0.281024  0.427245           3
+1     Gene     0.202664         0.202664                  NaN    0.194094  0.101719  0.312178           3
+
+Ranked modalities:
+['Image', 'Gene']
+
+Selected by hard-threshold rule:
+['Image']
+
+Selected by relative-threshold rule:
+['Image']
+
+Final selected modalities using criterion='both':
+['Image']
+Actual number of principal components used after adjustment: 10
+========== KMeans Clustering Results ==========
+1    7339
+4    3209
+3    2589
+2    2331
+5    1999
+0    1436
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/dimension_reduction/pca/H1_clusters.png
+H1 | pca | ARI = 0.2506 | n_clusters = 6 | n_features = 10
+Actual number of principal components used after adjustment: 10
+========== KMeans Clustering Results ==========
+3    6179
+2    2152
+1    1764
+0    1393
+4    1297
+5    1071
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/dimension_reduction/pca/G2_clusters.png
+G2 | pca | ARI = 0.1952 | n_clusters = 6 | n_features = 10
+Actual number of principal components used after adjustment: 10
+========== KMeans Clustering Results ==========
+1    9565
+0    3325
+2    1776
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/dimension_reduction/pca/E1_clusters.png
+E1 | pca | ARI = 0.1721 | n_clusters = 3 | n_features = 10
+
+Average ARI for pca: 0.2059
+========== KMeans Clustering Results ==========
+2    5410
+5    4594
+4    3229
+1    2401
+0    2211
+3    1058
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/dimension_reduction/selected_features/H1_clusters.png
+H1 | selected_features | ARI = 0.3476 | n_clusters = 6 | n_features = 20
+========== KMeans Clustering Results ==========
+0    4565
+2    2826
+4    1918
+5    1766
+1    1683
+3    1098
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/dimension_reduction/selected_features/G2_clusters.png
+G2 | selected_features | ARI = 0.2151 | n_clusters = 6 | n_features = 10
+========== KMeans Clustering Results ==========
+0    6596
+2    5414
+1    2656
+Name: count, dtype: int64
+Saved clustering plot: /Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config/node10/plots/dimension_reduction/selected_features/E1_clusters.png
+E1 | selected_features | ARI = 0.0523 | n_clusters = 3 | n_features = 18
+
+Average ARI for selected_features: 0.2050
+
+============================================================
+Dimension-reduction method summary
+============================================================
+  dim_reduction_method  average_ari  n_sections   status
+0                  pca     0.205934           3  success
+1    selected_features     0.204979           3  success
+
+Selected dimension-reduction method: pca
+[clustering_config] completed at 2026-07-13T00:13:55.855041+00:00 (elapsed 37.955 seconds)

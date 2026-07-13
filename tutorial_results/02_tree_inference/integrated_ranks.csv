@@ -1,0 +1,7 @@
+,adipose_tissue,breast_glands,cancer_in_situ,connective_tissue,immune_infiltrate,invasive_cancer
+adipose_tissue,0.0,13.0,15.0,1.0,9.0,11.0
+breast_glands,13.0,0.0,12.0,5.0,6.0,8.0
+cancer_in_situ,15.0,12.0,0.0,10.0,4.0,2.0
+connective_tissue,1.0,5.0,10.0,0.0,7.0,14.0
+immune_infiltrate,9.0,6.0,4.0,7.0,0.0,3.0
+invasive_cancer,11.0,8.0,2.0,14.0,3.0,0.0

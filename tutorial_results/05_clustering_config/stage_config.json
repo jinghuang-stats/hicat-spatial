@@ -1,0 +1,55 @@
+{
+  "included_modalities": [
+    "Gene",
+    "Image"
+  ],
+  "output_dir": "/Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/05_clustering_config",
+  "features_format": "auto",
+  "evaluate_all_nodes": false,
+  "label_key": "label",
+  "parameters": {
+    "selection_criterion": "both",
+    "hard_threshold": 0.25,
+    "alpha": 0.85,
+    "pcs_num_dic": {
+      "Gene": 30,
+      "Image": 10
+    },
+    "random_state": 0,
+    "visualization_config": {
+      "plot_modality_clusters": true,
+      "plot_dim_reduction_clusters": true,
+      "x_key": "x",
+      "y_key": "y",
+      "cat_color": [
+        "#000066",
+        "#FEB915",
+        "#C798EE",
+        "#59BE86",
+        "#7495D3",
+        "#F56867",
+        "#15821E",
+        "#3A84E6",
+        "#997273",
+        "#DB4C6C",
+        "#AF5F3C",
+        "#DAB370",
+        "#268785",
+        "#787878",
+        "#D1D1D1"
+      ],
+      "fig_size": 10,
+      "dpi": 100,
+      "invert_x": false,
+      "invert_y": true
+    },
+    "hipt_boundary_refinement_config": {
+      "enabled": true,
+      "x_key": "x",
+      "y_key": "y",
+      "bd_num_nbs": 25,
+      "smooth_after_reassign": true,
+      "smooth_num_nbs": 15
+    }
+  }
+}

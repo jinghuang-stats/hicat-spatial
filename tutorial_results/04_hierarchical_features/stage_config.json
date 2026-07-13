@@ -1,0 +1,30 @@
+{
+  "anchor_scenario": "nn_based",
+  "filtering_paras_by_modality": {
+    "Gene": {
+      "label_key": "label",
+      "min_fold_change": 1.1,
+      "min_in_out_group_ratio": 1.0,
+      "min_in_group_fraction": 0.0,
+      "pvals_adj": 0.05,
+      "gene_num": 10,
+      "two_sides": true,
+      "logged": true
+    },
+    "Image": {
+      "label_key": "label",
+      "min_fold_change": 1.1,
+      "min_in_out_group_ratio": 1.0,
+      "min_in_group_fraction": 0.0,
+      "pvals_adj": 0.05,
+      "gene_num": 10,
+      "two_sides": true,
+      "logged": true
+    }
+  },
+  "output_dir": "/Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/04_hierarchical_features",
+  "count_num": 1,
+  "strict": false,
+  "keep_raw_results": false,
+  "make_image_nonnegative": true
+}

@@ -1,0 +1,29 @@
+Root node: node10
+
+Node dictionary:
+node0: ['adipose_tissue']
+node1: ['breast_glands']
+node2: ['cancer_in_situ']
+node3: ['connective_tissue']
+node4: ['immune_infiltrate']
+node5: ['invasive_cancer']
+node6: ['adipose_tissue', 'connective_tissue']
+node7: ['cancer_in_situ', 'invasive_cancer']
+node8: ['immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+node9: ['breast_glands', 'adipose_tissue', 'connective_tissue']
+node10: ['breast_glands', 'adipose_tissue', 'connective_tissue', 'immune_infiltrate', 'cancer_in_situ', 'invasive_cancer']
+
+Adjacency dictionary:
+node6: ['node0', 'node3']
+node7: ['node2', 'node5']
+node8: ['node4', 'node7']
+node9: ['node1', 'node6']
+node10: ['node9', 'node8']
+
+Tree paths:
+node10/node9/node6/adipose_tissue
+node10/node9/breast_glands
+node10/node8/node7/cancer_in_situ
+node10/node9/node6/connective_tissue
+node10/node8/immune_infiltrate
+node10/node8/node7/invasive_cancer

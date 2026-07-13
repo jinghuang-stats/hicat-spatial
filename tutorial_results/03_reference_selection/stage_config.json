@@ -1,0 +1,31 @@
+{
+  "output_dir": "/Users/jinghuang/Downloads/test_tutorial/HiCAT/tutorial_results/03_reference_selection",
+  "label_key": "label",
+  "low_exp_thres": 0.05,
+  "normalize": true,
+  "normalization_method": "min_max",
+  "min_region_prop": 0.05,
+  "exclude_labels": [
+    "nan",
+    "unknown"
+  ],
+  "exclude_mode": "contains",
+  "pvals_adj": 0.05,
+  "min_in_out_group_ratio": 1.0,
+  "min_in_group_fraction": 0.5,
+  "min_fold_change": 1.1,
+  "gene_num": 10,
+  "weight_key": "weight",
+  "similarity_key": "KS_similarity",
+  "summary_key": "average",
+  "similarity_method": "ks",
+  "sort_by": "similarity",
+  "selection_mode": "cutoff",
+  "alpha": 0.85,
+  "top_k": 3,
+  "min_similarity_level": 0.75,
+  "selection_score_key": null,
+  "preprocess_ref": true,
+  "preprocess_qry": true,
+  "print_results": true
+}

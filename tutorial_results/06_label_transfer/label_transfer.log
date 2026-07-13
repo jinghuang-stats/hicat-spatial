@@ -1,0 +1,1182 @@
+[label_transfer] started at 2026-07-13T00:29:00.591126+00:00
+[label_transfer] query='H2' started at 2026-07-13T00:29:00.591583+00:00
+
+==============================================================================
+Hierarchy round: node10 -> node9 vs node8 (22828 observations)
+==============================================================================
+Actual number of principal components used after adjustment: 10
+========== Leiden Clustering Results ==========
+0    5973
+1    5110
+2    4695
+3    4064
+4    1953
+5     960
+6      73
+Name: count, dtype: int64
+========== Query clustering results for H2 ==========
+Selected modalities: ['Image']
+Reduction: pca
+Clustering: leiden
+Integrated embedding shape: (22828, 10)
+query_cluster
+0    5973
+1    5110
+2    4695
+3    4064
+4    1953
+5     960
+6      73
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577  hipt_578  cluster_size  boundary_score
+2 -0.000060 -0.000041 -0.000034          4695        0.000134
+6  0.199132  0.152796  0.112022            73        0.463950
+0  0.396187  0.344569  0.234596          5973        0.975353
+1 -0.447132 -0.360820 -0.254210          5110        1.062162
+3  0.519373  0.377183  0.273210          4064        1.169767
+5 -0.743342 -0.531828 -0.405481           960        1.680650
+4 -0.765056 -0.639232 -0.425982          1953        1.830270
+Boundary cluster: 2
+========================= boundary-reassigned clusters =========================
+query_cluster_bd_reassigned
+0    8410
+1    6054
+3    4825
+4    2103
+5    1339
+6      97
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+query_cluster_bd_refined
+0    8296
+1    6216
+3    4883
+4    2096
+5    1319
+6      18
+Name: count, dtype: int64
+========================= parent cluster proportions =========================
+query_cluster_bd_refined
+0    0.363413
+1    0.272297
+3    0.213904
+4    0.091817
+5    0.057780
+6    0.000789
+Name: proportion, dtype: float64
+Subtype genes used for gene-based subclustering:
+['CFD', 'IGHA1', 'AZGP1', 'IGHA2', 'SAA1', 'IGLC2', 'IGLC7', 'SLPI', 'KRT15', 'FABP4', 'ERBB2', 'MGP', 'ACTB', 'TMSB10', 'ACTG1', 'MDK', 'PFN1', 'PRDX1', 'ATP6V0B', 'SDC1']
+========== Leiden Clustering Results ==========
+0    2468
+1    2323
+2    2112
+3     907
+4     279
+5     149
+6      25
+7      20
+8      13
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    4783
+1    3322
+2     146
+3      25
+4      20
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    4761
+1    3344
+2     146
+3      25
+4      20
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    5050
+1    3226
+2      20
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2308
+1    1462
+2    1253
+3     830
+4     363
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2546
+1    2039
+2    1440
+3     191
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    3539
+1    2677
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1538
+1    1434
+2    1135
+3     700
+4      76
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2614
+1    2193
+2      76
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    4807
+1      76
+Name: count, dtype: int64
+========================= gene-subtyped clusters =========================
+query_cluster_bd_refined_gene_subtype_code
+0    5050
+5    4807
+3    3539
+1    3226
+4    2677
+7    2096
+8    1319
+6      76
+2      20
+9      18
+Name: count, dtype: int64
+Detecting anchors: ref_section=H1, modality=Gene
+=================================== Anchor Detection ===================================
+The running time of nn anchor detection: 4.0107 seconds
+
+
+========== Cross Table of Anchors ==========
+           1      0      8      6      5      3      7    2      4      9
+node9  33.01  30.75  34.50  40.79  28.58  10.74   7.25  0.0   4.59  72.22
+node8   0.53  11.68   3.18   0.00  12.23  28.71  45.28  0.0  27.83   0.00
+========== Absolute Anchor Proportion Difference ==========
+2     0.000000
+5    16.351155
+3    17.971178
+0    19.069307
+4    23.234965
+8    31.311600
+1    32.486051
+7    38.024809
+6    40.789474
+9    72.222222
+dtype: float64
+The clusters having the same proportions across two hierarchy anchors: 2
+=========== The absolute proportion difference across two hierarchies ===========
+2     0.000000
+5    16.351155
+3    17.971178
+0    19.069307
+4    23.234965
+8    31.311600
+1    32.486051
+7    38.024809
+6    40.789474
+9    72.222222
+dtype: float64
+The clusters having similar proportions across two hierarchy anchors: 2
+------------------- node9 -------------------
+The number of detected anchors: 5146
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+0                   1553    0.301788
+5                   1374    0.267003
+1                   1065    0.206957
+8                    455    0.088418
+3                    380    0.073844
+7                    152    0.029538
+4                    123    0.023902
+6                     31    0.006024
+9                     13    0.002526
+2                      0    0.000000
+------------------- node8 -------------------
+The number of detected anchors: 3947
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+3                   1016    0.257411
+7                    949    0.240436
+4                    745    0.188751
+0                    590    0.149481
+5                    588    0.148974
+8                     42    0.010641
+1                     17    0.004307
+2                      0    0.000000
+6                      0    0.000000
+9                      0    0.000000
+========== Updated Cross Table of Anchors (after assigning the weights of anchors that fall in each cluster) ==========
+           0      5      3      1      4      7      8      6    2      9
+node9  30.75  28.58  10.74  33.01   4.59   7.25  34.50  40.79  0.0  72.22
+node8  11.68  12.23  28.71   0.53  27.83  45.28   3.18   0.00  0.0   0.00
+=========== Clusters Label Assignment Difference (without/with weights adjustment) ===========
+  original adjusted_by_weights
+0    node9               node9
+5    node9               node9
+3    node8               node8
+1    node9               node9
+4    node8               node8
+7    node8               node8
+8    node9               node9
+6    node9               node9
+2    node9               node9
+9    node9               node9
+After adjusted by weights, the clusters that have different label assignments: None
+Novel / unassigned clusters: ['2']
+========== Before Novel Cluster Reassignment ==========
+node10__assignment
+node9            14496
+node8             8312
+novel_cluster       20
+Name: count, dtype: int64
+---------------- novel cluster 2 ----------------
+node8    482
+node9     18
+Name: count, dtype: int64
+Based on neighborhood composition, novel cluster 2 reassignment: node8
+========== Inferred Labels ==========
+node10__assignment
+node9    14496
+node8     8332
+Name: count, dtype: int64
+
+==============================================================================
+Hierarchy round: node9 -> node1 vs node6 (14496 observations)
+==============================================================================
+Actual number of principal components used after adjustment: 10
+========== Leiden Clustering Results ==========
+0    4452
+1    3571
+2    3392
+3    1531
+4    1316
+5     198
+6      36
+Name: count, dtype: int64
+========== Query clustering results for H2 ==========
+Selected modalities: ['Image']
+Reduction: pca
+Clustering: leiden
+Integrated embedding shape: (14496, 10)
+query_cluster
+0    4452
+1    3571
+2    3392
+3    1531
+4    1316
+5     198
+6      36
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577  hipt_578  cluster_size  boundary_score
+1 -0.000335 -0.000258 -0.000191          3571        0.000783
+5  0.129354  0.113662  0.077002           198        0.320019
+2  0.309931  0.273763  0.186077          3392        0.769772
+0  0.530520  0.421332  0.294894          4452        1.246746
+4 -0.635180 -0.487226 -0.368175          1316        1.490581
+3  0.748448  0.582795  0.420199          1531        1.751441
+6  1.003389  0.650466  0.519601            36        2.173455
+Boundary cluster: 1
+========================= boundary-reassigned clusters =========================
+query_cluster_bd_reassigned
+0    5560
+2    4645
+3    2161
+4    1755
+5     337
+6      38
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+query_cluster_bd_refined
+0    5678
+2    4697
+3    2213
+4    1709
+5     152
+6      47
+Name: count, dtype: int64
+========================= parent cluster proportions =========================
+query_cluster_bd_refined
+0    0.391694
+2    0.324020
+3    0.152663
+4    0.117895
+5    0.010486
+6    0.003242
+Name: proportion, dtype: float64
+Subtype genes used for gene-based subclustering:
+['IGHA1', 'APOD', 'JCHAIN', 'IGHA2', 'IGLC2', 'KRT15', 'AZGP1', 'SAA1', 'SCGB2A2', 'IGLC3', 'ADH1B', 'CDR1']
+========== Leiden Clustering Results ==========
+0    2388
+1    2016
+2    1045
+3     185
+4      26
+5      18
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    4502
+1     966
+2     166
+3      26
+4      18
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    5678
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1719
+1    1708
+2    1185
+3      85
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    3361
+1    1143
+2     108
+3      85
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    4612
+1      85
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1090
+1     809
+2     314
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2213
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    510
+1    428
+2    414
+3    282
+4     26
+5     19
+6     16
+7     14
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    697
+1    538
+2    399
+3     26
+4     19
+5     16
+6     14
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    697
+1    538
+2    399
+3     26
+4     19
+5     16
+6     14
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    697
+1    552
+2    399
+3     26
+4     19
+5     16
+Name: count, dtype: int64
+========================= gene-subtyped clusters =========================
+query_cluster_bd_refined_gene_subtype_code
+0     5678
+1     4612
+3     2213
+4      697
+5      552
+6      399
+10     152
+2       85
+11      47
+7       26
+8       19
+9       16
+Name: count, dtype: int64
+Detecting anchors: ref_section=H1, modality=Gene
+=================================== Anchor Detection ===================================
+The running time of nn anchor detection: 2.2971 seconds
+
+
+========== Cross Table of Anchors ==========
+           0     10      5      1      4     6     2      8     9      7      3   11
+node1   3.31   3.29  35.14  11.27  36.87  2.51  0.00    0.0   0.0   0.00   0.81  0.0
+node6  24.00  24.34  11.59  37.03  25.11  9.52  9.41  100.0  62.5  69.23  34.70  0.0
+========== Absolute Anchor Proportion Difference ==========
+11      0.000000
+6       7.017544
+2       9.411765
+4      11.764706
+0      20.693906
+10     21.052632
+5      23.550725
+1      25.758890
+3      33.890646
+9      62.500000
+7      69.230769
+8     100.000000
+dtype: float64
+The clusters having the same proportions across two hierarchy anchors: 11
+=========== The absolute proportion difference across two hierarchies ===========
+11      0.000000
+6       7.017544
+2       9.411765
+4      11.764706
+0      20.693906
+10     21.052632
+5      23.550725
+1      25.758890
+3      33.890646
+9      62.500000
+7      69.230769
+8     100.000000
+dtype: float64
+The clusters having similar proportions across two hierarchy anchors: 11
+------------------- node1 -------------------
+The number of detected anchors: 1192
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+1                    520    0.436242
+4                    257    0.215604
+5                    194    0.162752
+0                    188    0.157718
+3                     18    0.015101
+6                     10    0.008389
+10                     5    0.004195
+11                     0    0.000000
+2                      0    0.000000
+7                      0    0.000000
+8                      0    0.000000
+9                      0    0.000000
+------------------- node6 -------------------
+The number of detected anchors: 4208
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+1                   1708    0.405894
+0                   1363    0.323907
+3                    768    0.182510
+4                    175    0.041587
+5                     64    0.015209
+6                     38    0.009030
+10                    37    0.008793
+8                     19    0.004515
+7                     18    0.004278
+9                     10    0.002376
+2                      8    0.001901
+11                     0    0.000000
+========== Updated Cross Table of Anchors (after assigning the weights of anchors that fall in each cluster) ==========
+           0      1      3      4      5     6     10     2   11      7      8     9
+node1   3.31  11.27   0.81  36.87  35.14  2.51   3.29  0.00  0.0   0.00    0.0   0.0
+node6  24.00  37.03  34.70  25.11  11.59  9.52  24.34  9.41  0.0  69.23  100.0  62.5
+=========== Clusters Label Assignment Difference (without/with weights adjustment) ===========
+   original adjusted_by_weights
+0     node6               node6
+1     node6               node6
+3     node6               node6
+4     node1               node1
+5     node1               node1
+6     node6               node6
+10    node6               node6
+2     node6               node6
+11    node1               node1
+7     node6               node6
+8     node6               node6
+9     node6               node6
+After adjusted by weights, the clusters that have different label assignments: None
+Novel / unassigned clusters: ['11']
+========== Before Novel Cluster Reassignment ==========
+node9__assignment
+node6            13200
+node1             1249
+novel_cluster       47
+Name: count, dtype: int64
+---------------- novel cluster 11 ----------------
+node6    1175
+Name: count, dtype: int64
+Based on neighborhood composition, novel cluster 11 reassignment: node6
+========== Inferred Labels ==========
+node9__assignment
+node6    13247
+node1     1249
+Name: count, dtype: int64
+
+==============================================================================
+Hierarchy round: node8 -> node4 vs node7 (8332 observations)
+==============================================================================
+Actual number of principal components used after adjustment: 10
+========== Leiden Clustering Results ==========
+0    3427
+1    1593
+2    1348
+3    1133
+4     717
+5     114
+Name: count, dtype: int64
+========== Query clustering results for H2 ==========
+Selected modalities: ['Image']
+Reduction: pca
+Clustering: leiden
+Integrated embedding shape: (8332, 10)
+query_cluster
+0    3427
+1    1593
+2    1348
+3    1133
+4     717
+5     114
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577  hipt_578  cluster_size  boundary_score
+3 -0.000018 -0.000015 -0.000009          1133        0.000043
+5 -0.086151 -0.061376 -0.041261           114        0.188788
+0 -0.300851 -0.254285 -0.167726          3427        0.722862
+1 -0.735119 -0.570679 -0.426649          1593        1.732448
+2 -0.743506 -0.615300 -0.405417          1348        1.764223
+4 -0.795982 -0.675455 -0.461764           717        1.933201
+Boundary cluster: 3
+========================= boundary-reassigned clusters =========================
+query_cluster_bd_reassigned
+0    4387
+1    1593
+2    1451
+4     768
+5     133
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+query_cluster_bd_refined
+0    4487
+1    1608
+2    1440
+4     785
+5      12
+Name: count, dtype: int64
+========================= parent cluster proportions =========================
+query_cluster_bd_refined
+0    0.538526
+1    0.192991
+2    0.172828
+4    0.094215
+5    0.001440
+Name: proportion, dtype: float64
+Subtype genes used for gene-based subclustering:
+['CD52', 'CD74', 'C3', 'B2M', 'CST3', 'HLA-B', 'C1QA', 'IGHM', 'HLA-E', 'CCL19', 'ERBB2', 'MGP', 'SDC1', 'MDK', 'IGFBP2', 'CD24', 'KRT7', 'PTPRF', 'MIEN1', 'NEUROD2']
+========== Leiden Clustering Results ==========
+0    1294
+1    1224
+2     787
+3     707
+4     377
+5      98
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2622
+1    1391
+2     376
+3      98
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    4213
+1     274
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    700
+1    651
+2    147
+3    110
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    941
+1    667
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    653
+1    458
+2    224
+3     62
+4     43
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1174
+1     223
+2      43
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1174
+1     223
+2      43
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1174
+1     223
+2      43
+Name: count, dtype: int64
+========================= gene-subtyped clusters =========================
+query_cluster_bd_refined_gene_subtype_code
+0    4213
+4    1174
+2     941
+7     785
+3     667
+1     274
+5     223
+6      43
+8      12
+Name: count, dtype: int64
+Detecting anchors: ref_section=H1, modality=Gene
+=================================== Anchor Detection ===================================
+The running time of nn anchor detection: 1.2963 seconds
+
+
+========== Cross Table of Anchors ==========
+           2      3      0      5      7      6      4      8      1
+node4   5.84  14.54   1.97   0.00   2.55   2.33   0.85   0.00   0.00
+node7  33.05  16.49  29.88  26.91  39.87  67.44  35.60  41.67  34.31
+========== Absolute Anchor Proportion Difference ==========
+3     1.949025
+5    26.905830
+2    27.205101
+0    27.913601
+1    34.306569
+4    34.752981
+7    37.324841
+8    41.666667
+6    65.116279
+dtype: float64
+The clusters having the same proportions across two hierarchy anchors: None
+=========== The absolute proportion difference across two hierarchies ===========
+3     1.949025
+5    26.905830
+2    27.205101
+0    27.913601
+1    34.306569
+4    34.752981
+7    37.324841
+8    41.666667
+6    65.116279
+dtype: float64
+The clusters having similar proportions across two hierarchy anchors: 3
+------------------- node4 -------------------
+The number of detected anchors: 266
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+3                     97    0.364662
+0                     83    0.312030
+2                     55    0.206767
+7                     20    0.075188
+4                     10    0.037594
+6                      1    0.003759
+1                      0    0.000000
+5                      0    0.000000
+8                      0    0.000000
+------------------- node7 -------------------
+The number of detected anchors: 2599
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+0                   1259    0.484417
+4                    418    0.160831
+7                    313    0.120431
+2                    311    0.119661
+3                    110    0.042324
+1                     94    0.036168
+5                     60    0.023086
+6                     29    0.011158
+8                      5    0.001924
+========== Updated Cross Table of Anchors (after assigning the weights of anchors that fall in each cluster) ==========
+           0      4      2      7    3      1      5      6      8
+node4   1.97   0.85   5.84   2.55  5.3   0.00   0.00   2.33   0.00
+node7  29.88  35.60  33.05  39.87  0.7  34.31  26.91  67.44  41.67
+=========== Clusters Label Assignment Difference (without/with weights adjustment) ===========
+  original adjusted_by_weights
+0    node7               node7
+4    node7               node7
+2    node7               node7
+7    node7               node7
+3    node7               node4
+1    node7               node7
+5    node7               node7
+6    node7               node7
+8    node7               node7
+After adjusted by weights, the clusters that have different label assignments: 3
+Novel / unassigned clusters: []
+========== Before Novel Cluster Reassignment ==========
+node8__assignment
+node7    7665
+node4     667
+Name: count, dtype: int64
+========== Inferred Labels ==========
+node8__assignment
+node7    7665
+node4     667
+Name: count, dtype: int64
+
+==============================================================================
+Hierarchy round: node6 -> node0 vs node3 (13247 observations)
+==============================================================================
+Actual number of principal components used after adjustment: 10
+========== Leiden Clustering Results ==========
+0    3779
+1    3204
+2    2382
+3    2271
+4    1575
+5      36
+Name: count, dtype: int64
+========== Query clustering results for H2 ==========
+Selected modalities: ['Image']
+Reduction: pca
+Clustering: leiden
+Integrated embedding shape: (13247, 10)
+query_cluster
+0    3779
+1    3204
+2    2382
+3    2271
+4    1575
+5      36
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577      hipt_578  cluster_size  boundary_score
+1 -0.000002 -0.000003  1.643955e-07          3204        0.000005
+0  0.298941  0.262913  1.795505e-01          3779        0.741404
+2  0.357142  0.244091  1.738404e-01          2382        0.775073
+3  0.557158  0.469929  3.213921e-01          2271        1.348479
+4  0.747616  0.583600  4.205037e-01          1575        1.751719
+5  1.003389  0.650466  5.196006e-01            36        2.173455
+Boundary cluster: 1
+========================= boundary-reassigned clusters =========================
+query_cluster_bd_reassigned
+0    5388
+3    3112
+2    2517
+4    2192
+5      38
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+query_cluster_bd_refined
+0    5218
+3    3185
+2    2553
+4    2243
+5      48
+Name: count, dtype: int64
+========================= parent cluster proportions =========================
+query_cluster_bd_refined
+0    0.393901
+3    0.240432
+2    0.192723
+4    0.169321
+5    0.003623
+Name: proportion, dtype: float64
+Subtype genes used for gene-based subclustering:
+['GPX3', 'TPT1', 'CFD', 'FABP4', 'ACTB', 'ADIRF', 'FTL', 'ADH1B', 'CDR1', 'RNASE1', 'IGHG3', 'SDC1', 'KRT19', 'SSR4', 'ARHGDIA', 'IGHA1', 'FBXW5', 'MZB1', 'WDR34', 'CLDN3']
+========== Leiden Clustering Results ==========
+0    2670
+1    1219
+2     821
+3     203
+4     120
+5      86
+6      45
+7      22
+8      19
+9      13
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    3559
+1    1339
+2     135
+3      86
+4      45
+5      22
+6      19
+7      13
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    3694
+1    1384
+2     108
+3      19
+4      13
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    3694
+1    1384
+2     108
+3      19
+4      13
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1287
+1    1083
+2     804
+3      11
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2370
+1     804
+2      11
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2381
+1     804
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1247
+1     766
+2     232
+3     173
+4     135
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2118
+1     262
+2     173
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2380
+1     173
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    885
+1    884
+2    474
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2243
+Name: count, dtype: int64
+========================= gene-subtyped clusters =========================
+query_cluster_bd_refined_gene_subtype_code
+0     3694
+7     2381
+5     2380
+9     2243
+1     1384
+8      804
+6      173
+2      108
+10      48
+3       19
+4       13
+Name: count, dtype: int64
+Detecting anchors: ref_section=H1, modality=Gene
+=================================== Anchor Detection ===================================
+The running time of nn anchor detection: 2.1837 seconds
+
+
+========== Cross Table of Anchors ==========
+           8      0      7      1      2      5      6    4      3      9     10
+node0  13.93  16.00   4.54   1.30  35.19  15.08   6.36  0.0  57.89  23.90  33.33
+node3  43.91  36.11  24.65  21.32   5.56  11.13  35.26  0.0   0.00   0.62   0.00
+========== Absolute Anchor Proportion Difference ==========
+4      0.000000
+5      3.949580
+1     20.014451
+0     20.113698
+7     20.117598
+9     23.272403
+6     28.901734
+2     29.629630
+8     29.975124
+10    33.333333
+3     57.894737
+dtype: float64
+The clusters having the same proportions across two hierarchy anchors: 4
+=========== The absolute proportion difference across two hierarchies ===========
+4      0.000000
+5      3.949580
+1     20.014451
+0     20.113698
+7     20.117598
+9     23.272403
+6     28.901734
+2     29.629630
+8     29.975124
+10    33.333333
+3     57.894737
+dtype: float64
+The clusters having similar proportions across two hierarchy anchors: 5, 4
+------------------- node0 -------------------
+The number of detected anchors: 1800
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+0                    591    0.328333
+9                    536    0.297778
+5                    359    0.199444
+8                    112    0.062222
+7                    108    0.060000
+2                     38    0.021111
+1                     18    0.010000
+10                    16    0.008889
+3                     11    0.006111
+6                     11    0.006111
+4                      0    0.000000
+------------------- node3 -------------------
+The number of detected anchors: 2915
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+0                   1334    0.457633
+7                    587    0.201372
+8                    353    0.121098
+1                    295    0.101201
+5                    265    0.090909
+6                     61    0.020926
+9                     14    0.004803
+2                      6    0.002058
+10                     0    0.000000
+3                      0    0.000000
+4                      0    0.000000
+========== Updated Cross Table of Anchors (after assigning the weights of anchors that fall in each cluster) ==========
+           0      7     5      9      1      8      6      2     10      3    4
+node0  16.00   4.54  3.01  23.90   1.30  13.93   6.36  35.19  33.33  57.89  0.0
+node3  36.11  24.65  1.01   0.62  21.32  43.91  35.26   5.56   0.00   0.00  0.0
+=========== Clusters Label Assignment Difference (without/with weights adjustment) ===========
+   original adjusted_by_weights
+0     node3               node3
+7     node3               node3
+5     node0               node0
+9     node0               node0
+1     node3               node3
+8     node3               node3
+6     node3               node3
+2     node0               node0
+10    node0               node0
+3     node0               node0
+4     node0               node0
+After adjusted by weights, the clusters that have different label assignments: None
+Novel / unassigned clusters: ['4']
+========== Before Novel Cluster Reassignment ==========
+node6__assignment
+node3            8436
+node0            4798
+novel_cluster      13
+Name: count, dtype: int64
+---------------- novel cluster 4 ----------------
+node3    325
+Name: count, dtype: int64
+Based on neighborhood composition, novel cluster 4 reassignment: node3
+========== Inferred Labels ==========
+node6__assignment
+node3    8449
+node0    4798
+Name: count, dtype: int64
+
+==============================================================================
+Hierarchy round: node7 -> node2 vs node5 (7665 observations)
+==============================================================================
+Actual number of principal components used after adjustment: 10
+========== Leiden Clustering Results ==========
+0    3409
+1    1279
+2    1132
+3     974
+4     757
+5     114
+Name: count, dtype: int64
+========== Query clustering results for H2 ==========
+Selected modalities: ['Image']
+Reduction: pca
+Clustering: leiden
+Integrated embedding shape: (7665, 10)
+query_cluster
+0    3409
+1    1279
+2    1132
+3     974
+4     757
+5     114
+Name: count, dtype: int64
+========================= mean HIPT/RGB values by cluster =========================
+   hipt_576  hipt_577  hipt_578  cluster_size  boundary_score
+2 -0.000012 -0.000008 -0.000004          1132        0.000024
+5 -0.085576 -0.061397 -0.041408           114        0.188381
+0 -0.304068 -0.256753 -0.169530          3409        0.730351
+1 -0.736926 -0.611550 -0.401950          1279        1.750425
+3 -0.765719 -0.578503 -0.429478           974        1.773701
+4 -0.803614 -0.680317 -0.466206           757        1.950138
+Boundary cluster: 2
+========================= boundary-reassigned clusters =========================
+query_cluster_bd_reassigned
+0    4368
+1    1384
+3     974
+4     808
+5     131
+Name: count, dtype: int64
+========================= final boundary-refined clusters =========================
+query_cluster_bd_refined
+0    4464
+1    1376
+3     991
+4     820
+5      14
+Name: count, dtype: int64
+========================= parent cluster proportions =========================
+query_cluster_bd_refined
+0    0.582387
+1    0.179517
+3    0.129289
+4    0.106980
+5    0.001826
+Name: proportion, dtype: float64
+Subtype genes used for gene-based subclustering:
+['ACTG1', 'IFI27', 'B2M', 'CD24', 'HSP90AB1', 'MLLT6', 'PRRC2B', 'TPT1', 'SEC16A', 'CALR', 'TIMP1', 'EIF3G', 'ATG9A', 'S100A9', 'TOM1', 'IGLC2']
+========== Leiden Clustering Results ==========
+0    1823
+1    1292
+2     758
+3     322
+4     269
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    2530
+1    1665
+2     269
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    3891
+1     304
+2     269
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    4195
+1     269
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    638
+1    448
+2    179
+3     59
+4     52
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    1197
+1     179
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    581
+1    311
+2     99
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    991
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    352
+1    324
+2    144
+Name: count, dtype: int64
+========== Leiden Clustering Results ==========
+0    676
+1    144
+Name: count, dtype: int64
+========================= gene-subtyped clusters =========================
+query_cluster_bd_refined_gene_subtype_code
+0    4195
+2    1197
+4     991
+5     676
+1     269
+3     179
+6     144
+7      14
+Name: count, dtype: int64
+Detecting anchors: ref_section=H1, modality=Gene
+=================================== Anchor Detection ===================================
+The running time of nn anchor detection: 1.1365 seconds
+
+
+========== Cross Table of Anchors ==========
+           4      0      3      6      2     1     7      5
+node2  30.58  17.00  30.17  19.44  29.24  0.37  0.00  25.30
+node5   2.12  17.47   0.00   0.00  16.12  0.00  7.14  10.95
+========== Absolute Anchor Proportion Difference ==========
+1     0.371747
+0     0.476758
+7     7.142857
+2    13.116124
+5    14.349112
+6    19.444444
+4    28.456105
+3    30.167598
+dtype: float64
+The clusters having the same proportions across two hierarchy anchors: None
+=========== The absolute proportion difference across two hierarchies ===========
+1     0.371747
+0     0.476758
+7     7.142857
+2    13.116124
+5    14.349112
+6    19.444444
+4    28.456105
+3    30.167598
+dtype: float64
+The clusters having similar proportions across two hierarchy anchors: 0, 1
+------------------- node2 -------------------
+The number of detected anchors: 1620
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+0                    713    0.440123
+2                    350    0.216049
+4                    303    0.187037
+5                    171    0.105556
+3                     54    0.033333
+6                     28    0.017284
+1                      1    0.000617
+7                      0    0.000000
+------------------- node5 -------------------
+The number of detected anchors: 1022
+The anchors distribution across clusters
+               spots_num  percentage
+query_cluster                       
+0                    733    0.717221
+2                    193    0.188845
+5                     74    0.072407
+4                     21    0.020548
+7                      1    0.000978
+1                      0    0.000000
+3                      0    0.000000
+6                      0    0.000000
+========== Updated Cross Table of Anchors (after assigning the weights of anchors that fall in each cluster) ==========
+           0      2      4      5    1      3      6     7
+node2   7.48  29.24  30.58  25.30  0.0  30.17  19.44  0.00
+node5  12.53  16.12   2.12  10.95  0.0   0.00   0.00  7.14
+=========== Clusters Label Assignment Difference (without/with weights adjustment) ===========
+  original adjusted_by_weights
+0    node5               node5
+2    node2               node2
+4    node2               node2
+5    node2               node2
+1    node2               node2
+3    node2               node2
+6    node2               node2
+7    node5               node5
+After adjusted by weights, the clusters that have different label assignments: None
+Novel / unassigned clusters: []
+========== Before Novel Cluster Reassignment ==========
+node7__assignment
+node5    4209
+node2    3456
+Name: count, dtype: int64
+========== Inferred Labels ==========
+node7__assignment
+node5    4209
+node2    3456
+Name: count, dtype: int64
+[label_transfer] query='H2' completed in 65.798 seconds
+[label_transfer] completed at 2026-07-13T00:30:06.390884+00:00 (elapsed 65.800 seconds)
