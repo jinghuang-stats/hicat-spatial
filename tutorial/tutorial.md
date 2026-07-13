@@ -778,7 +778,7 @@ clustering_configs = {
 
 Each transfer scenario requires a different reference-data structure. The helper below creates query-specific jobs from the results of the previous stages and determines the corresponding Stage 6 scenario.
 
-| Transfer scenario | `scenario` value | Reference structure | Recommended use |
+| Transfer scenario | `scenario` | Reference structure | Recommended use |
 |---|---|---|---|
 | Single-reference nearest neighbor | `single_ref_nn` | `{modality: AnnData}` | Within-study or same-technology transfer with one selected reference |
 | Multi-reference nearest neighbor | `multi_ref_nn` | `{section: {modality: AnnData}}` | Within-study or same-technology transfer with multiple selected references |
@@ -954,7 +954,7 @@ transfer_stage_result = run_label_transfer_stage(
 )
 ```
 
-<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/06_label_transfer/H2/single_ref_nn/refined_predicted_regions.png" width=100% height=100%>
+<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/06_label_transfer/H2/single_ref_nn/refined_predicted_regions.png" width=85% height=85%>
 
 | Parameter | Description |
 |---|---|
