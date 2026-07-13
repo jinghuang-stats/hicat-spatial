@@ -434,10 +434,22 @@ tree_result = run_tree_inference_stage(
 )
 
 hier_tree = tree_result["tree"]
-print(hier_tree.show())
+hier_tree.show()
 ```
 
-<!-- TODO: Insert the inferred hierarchy figure or text representation here. -->
+```text
+                                          ┌─   adipose_tissue
+                    ┌─       node6       ─┤
+          ┌─ node9 ─┤                     └─ connective_tissue
+          │         └─   breast_glands
+─ node10 ─┤                               ┌─   cancer_in_situ
+          │         ┌─       node7       ─┤
+          └─ node8 ─┤                     └─  invasive_cancer
+                    └─ immune_infiltrate
+
+```
+
+<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/02_tree_inference/tree_structure.png" width=85% height=85%>
 
 The weights control the relative contributions of:
 
@@ -449,7 +461,7 @@ Larger values make the inferred tree rely more heavily on the corresponding info
 
 ### 5.4 Reweight the inferred tree without repeating feature selection
 
-After inspecting the initial tree, you can test alternative modality weights without repeating feature selection or modality-specific distance calculations:
+After inspecting the initial tree, you can test alternative modality weights or subset reference sections without repeating feature selection or modality-specific distance calculations:
 
 ```python
 from hicat_spatial import rerun_tree_inference_with_weights
@@ -457,12 +469,13 @@ from hicat_spatial import rerun_tree_inference_with_weights
 reweighted_tree_result = rerun_tree_inference_with_weights(
     tree_result=tree_result,
     weights={"w_G": 1.0, "w_I": 0.5, "w_S": 0.5},
+    reference_sections=["H1", "E1"],
     output_dir=analysis_root / "02_tree_inference_reweighted",
     show_tree=False,
 )
 
 hier_tree = reweighted_tree_result["tree"]
-print(hier_tree.show())
+hier_tree.show()
 ```
 
 Optionally remove intermediate objects to reduce memory usage:
@@ -520,6 +533,12 @@ selected_refs_dic = reference_result.selected_refs_dic
 
 print(selected_refs_dic)
 print(reference_result.to_summary_df())
+```
+
+```text
+              selected_refs  n_selected_refs   ranked_refs selection_metric selection_mode  alpha  top_k  min_similarity_level
+query_section                                                                                                                 
+H2                     [H1]                1  [H1, E1, G2]    KS_similarity         cutoff   0.85      3                  0.75
 ```
 
 - **Stage 3** also stores processed molecular objects used by **Stage 6**:
@@ -682,8 +701,14 @@ one_result = embedding_result.get_result(shared_result_key)
 print("Selected modalities:", one_result.selected_modalities)
 print("Dimensionality-reduction method:", one_result.dim_reduction_method)
 print("Average modality ARI:", one_result.modality_avg_ari)
-print(one_result.dim_reduction_summary_df)
-print(one_result.summary())
+print("Average dimension reduction ARI:",one_result.dim_reduction_summary_df)
+```
+
+```text
+Selected modalities: ['Image']
+
+Dimensionality-reduction method: pca
+
 ```
 
 ### 8.3 Complete the clustering configuration
@@ -802,7 +827,6 @@ Gene subtyping can add molecular information when clustering relies primarily on
 gene_subtyping_config = {
     "enabled": True,
     "subtype_gene_num": 10,
-    "count_num": None,
     "subtype_min_cluster_prop": 0.1,
     "min_cluster_size": 30,
     "clustering_method": "leiden",
@@ -821,7 +845,6 @@ gene_subtyping_config = {
 | Parameter | Description |
 |---|---|
 | `subtype_gene_num` | Number of target-side and non-target-side hierarchy genes used when `subtype_genes` is not supplied |
-| `count_num` | Number of reference sections in which a hierarchical gene must be shared; use `None` to apply the default behavior |
 | `subtype_min_cluster_prop` | Minimum proportion of active observations required for a parent cluster to be eligible for gene subtyping |
 | `min_cluster_size` | Minimum number of observations required before gene subtyping is attempted |
 | `max_subtypes` | Maximum desired number of gene-based subtypes within an eligible parent cluster |
@@ -881,7 +904,7 @@ postprocess_paras = {
     "refine": True,
     "num_nbs": 10,
     "cat_color": cat_color_map,
-    "fig_size": 10,
+    "fig_size": 13,
     "dpi": 300,
     "invert_x": invert_x,
     "invert_y": invert_y,
@@ -895,7 +918,7 @@ intermediate_figure_paras = {
     "clustering_cat_color": None,
     "anchor_cat_color": ["#000066", "#FEB915"],
     "assignment_cat_color": None,
-    "fig_size": 10,
+    "fig_size": 13,
     "dpi": 100,
     "invert_x": invert_x,
     "invert_y": invert_y,
@@ -933,6 +956,8 @@ transfer_stage_result = run_label_transfer_stage(
 )
 ```
 
+<img src="https://github.com/jinghuang-stats/HiCAT/blob/main/tutorial_results/06_label_transfer/refined_predicted_regions.png" width=100% height=100%>
+
 | Parameter | Description |
 |---|---|
 | `min_node_prop` | Minimum proportion of query observations required for a child node to remain eligible for further splitting |
@@ -944,11 +969,28 @@ Inspect the automatic-mode results:
 ```python
 for query_section in query_sections:
     query_transfer_result = transfer_stage_result.get_result(query_section)
-
-    print(f"Query section: {query_section}")
+    print(f"-------------------- Query section: {query_section} --------------------")
     print(query_transfer_result.final_labels.value_counts(dropna=False))
-    print(query_transfer_result.round_summary())
     print("Complete:", query_transfer_result.is_complete)
+```
+
+```text
+-------------------- Query section: H2 --------------------
+hicat_label
+connective_tissue    8449
+adipose_tissue       4798
+invasive_cancer      4209
+cancer_in_situ       3456
+breast_glands        1249
+immune_infiltrate     667
+Name: count, dtype: int64
+Complete: True
+```
+
+Optional steps to reduce memory usage:
+```
+del jobs
+gc.collect()
 ```
 
 ---
@@ -1041,6 +1083,18 @@ heterogeneity_result = run_heterogeneity_stage(
 Inspect the selected heterogeneous regions and the summary table:
 
 ```python
-print(heterogeneity_result.selected_regions)
-print(heterogeneity_result.hetero_summary)
+print(heterogeneity_result.hetero_summary["hetero_score_sca"])
+print("Selected heterogeneous regions:", heterogeneity_result.selected_regions)
+```
+
+```text
+cancer_in_situ       1.000000
+immune_infiltrate    0.861509
+invasive_cancer      0.620385
+connective_tissue    0.496405
+breast_glands        0.276758
+adipose_tissue       0.000000
+Name: hetero_score_sca, dtype: float64
+
+Selected heterogeneous regions: ['cancer_in_situ', 'immune_infiltrate', 'invasive_cancer']
 ```
