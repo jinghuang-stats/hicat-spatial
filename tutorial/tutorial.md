@@ -1012,7 +1012,7 @@ hetero_score_configs = {
 }
 
 hetero_subtype_configs = {
-    "run_subtype": True,
+    "run_subtype": False,
     "min_region_spots": 10,
     "min_cluster_fraction": 0.05,
     "pcs_num": 20,
